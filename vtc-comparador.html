@@ -31,10 +31,17 @@
   --shadow:     0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -1px rgba(0,0,0,.06);
 }
 
-*  { box-sizing:border-box; margin:0; padding:0; }
-html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+*, *::before, *::after { box-sizing:border-box; }
+#vtc-app {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size:14px; background:var(--surface); color:var(--ink);
-  height:auto; min-height:0; overflow-x:hidden; }
+  min-height:100%; overflow-x:hidden;
+  /* Aislar del CSS de Geotab */
+  all:initial;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  display:block; background:#f3f4f6; color:#111827;
+}
+#vtc-app *, #vtc-app *::before, #vtc-app *::after { box-sizing:border-box; margin:0; padding:0; }
 
 /* ── HEADER ─────────────────────────────────────────── */
 .vtc-header {
@@ -323,7 +330,7 @@ tbody tr.vrow td { padding:9px 12px; font-weight:500; }
 
 </style>
 </head>
-<body>
+<body style="margin:0;padding:0;background:transparent;">
 <div id="vtc-app">
 
   <!-- HEADER -->
