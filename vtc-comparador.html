@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Comparador VTC v3.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ── VTC Comparador V3.0 — Estilos ──────────────────── */
+:root {
+  --ink:        #111827;
+  --ink-mid:    #374151;
+  --ink-light:  #6b7280;
+  --surface:    #f3f4f6;
+  --card:       #ffffff;
+  --border:     #e5e7eb;
+  --border-mid: #d1d5db;
+  --accent:     #2563eb;
+  --accent-dim: #eff6ff;
+  --ok:         #059669;
+  --ok-dim:     #ecfdf5;
+  --warn:       #d97706;
+  --warn-dim:   #fffbeb;
+  --danger:     #dc2626;
+  --danger-dim: #fef2f2;
+  --critical:   #7f1d1d;
+  --critical-dim:#fecaca;
+  --radius:     10px;
+  --radius-sm:  6px;
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.1);
+  --shadow:     0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -1px rgba(0,0,0,.06);
+}
+
+*  { box-sizing:border-box; margin:0; padding:0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size:14px; background:var(--surface); color:var(--ink);
+  height:auto; min-height:0; overflow-x:hidden; }
+
+/* ── HEADER ─────────────────────────────────────────── */
+.vtc-header {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:0 20px; height:52px; display:flex; align-items:center;
+  justify-content:space-between; position:relative; z-index:10;
+}
+.vtc-header-left  { display:flex; align-items:center; gap:10px; }
+.vtc-logo {
+  width:30px; height:30px; border-radius:7px; background:var(--accent);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.vtc-logo svg { width:16px; height:16px; stroke:#fff; fill:none;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.vtc-title { font-size:14px; font-weight:600; color:var(--ink); }
+.vtc-version { font-size:10px; font-weight:600; color:var(--accent);
+  background:var(--accent-dim); padding:1px 6px; border-radius:10px; margin-left:4px; }
+.vtc-db-badge {
+  font-size:11px; font-weight:600; color:var(--ok);
+  background:var(--ok-dim); padding:2px 8px; border-radius:10px;
+  border:1px solid #a7f3d0;
+}
+.vtc-rule-status {
+  font-size:11px; padding:2px 8px; border-radius:10px;
+  display:flex; align-items:center; gap:4px;
+}
+.vtc-rule-status.found  { background:#eff6ff; color:var(--accent); border:1px solid #bfdbfe; }
+.vtc-rule-status.missing{ background:#fef2f2; color:var(--danger); border:1px solid #fecaca; }
+
+/* ── BOTONES ─────────────────────────────────────────── */
+.btn {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:6px 12px; border-radius:var(--radius-sm); font-size:12px;
+  font-weight:600; cursor:pointer; border:1px solid var(--border-mid);
+  background:var(--card); color:var(--ink); transition:all .1s;
+}
+.btn:hover  { background:var(--surface); }
+.btn:active { transform:scale(.98); }
+.btn svg    { width:13px; height:13px; stroke:currentColor; fill:none;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn-primary:hover { background:#1d4ed8; }
+.btn-primary:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+.btn-sm { padding:4px 10px; font-size:11px; }
+
+/* ── LAYOUT ──────────────────────────────────────────── */
+.vtc-main { padding:16px 20px; }
+
+/* ── UPLOAD ──────────────────────────────────────────── */
+.upload-zone {
+  border:2px dashed var(--border-mid); border-radius:var(--radius);
+  padding:24px; text-align:center; cursor:pointer;
+  background:var(--card); margin-bottom:14px;
+  transition:border-color .15s, background .15s;
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color:var(--accent); background:var(--accent-dim); }
+.upload-zone svg { width:28px; height:28px; stroke:var(--ink-light); fill:none;
+  stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; margin-bottom:6px; }
+.upload-zone.drag svg { stroke:var(--accent); }
+.upload-zone p { font-size:12px; color:var(--ink-mid); }
+.upload-zone strong { color:var(--accent); }
+.upload-zone input { display:none; }
+
+/* ── SETTINGS BAR ────────────────────────────────────── */
+.settings-bar {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:12px 16px; margin-bottom:14px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;
+}
+.sg { display:flex; flex-direction:column; gap:3px; }
+.sg label { font-size:10px; font-weight:700; color:var(--ink-light);
+  text-transform:uppercase; letter-spacing:.05em; }
+.sg input, .sg select {
+  height:32px; border:1px solid var(--border-mid); border-radius:var(--radius-sm);
+  padding:0 8px; font-size:12px; color:var(--ink); background:#fff; outline:none;
+}
+.sg input:focus, .sg select:focus {
+  border-color:var(--accent); box-shadow:0 0 0 2px rgba(37,99,235,.12); }
+
+/* ── DASHBOARD MÉTRICAS ──────────────────────────────── */
+.dashboard {
+  display:grid;
+  grid-template-columns: repeat(4, 1fr) repeat(4, 1fr);
+  gap:10px; margin-bottom:14px;
+}
+@media(max-width:1100px){ .dashboard{ grid-template-columns:repeat(4,1fr); } }
+@media(max-width:700px) { .dashboard{ grid-template-columns:repeat(2,1fr); } }
+
+.metric {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:12px 14px;
+  display:flex; flex-direction:column; gap:2px;
+  border-left:3px solid transparent;
+}
+.metric.m-accent  { border-left-color:var(--accent); }
+.metric.m-ok      { border-left-color:var(--ok); }
+.metric.m-danger  { border-left-color:var(--danger); }
+.metric.m-warn    { border-left-color:var(--warn); }
+.metric.m-critical{ border-left-color:var(--critical); }
+.metric-label { font-size:10px; font-weight:700; color:var(--ink-light);
+  text-transform:uppercase; letter-spacing:.05em; }
+.metric-value { font-size:22px; font-weight:700; line-height:1.1; color:var(--ink); }
+.metric.m-accent  .metric-value { color:var(--accent); }
+.metric.m-ok      .metric-value { color:var(--ok); }
+.metric.m-danger  .metric-value { color:var(--danger); }
+.metric.m-warn    .metric-value { color:var(--warn); }
+.metric.m-critical.metric-value { color:var(--critical); }
+.metric-sub { font-size:10px; color:var(--ink-light); }
+
+/* ── BARRA DE COBERTURA ──────────────────────────────── */
+.coverage-row {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:10px 16px;
+  display:flex; align-items:center; gap:12px; margin-bottom:14px;
+}
+.coverage-label { font-size:11px; font-weight:600; color:var(--ink-mid); white-space:nowrap; }
+.coverage-track { flex:1; height:7px; background:var(--border); border-radius:4px; overflow:hidden; }
+.coverage-fill  { height:100%; border-radius:4px; transition:width .6s ease; }
+.coverage-pct   { font-size:12px; font-weight:700; white-space:nowrap; }
+
+/* ── ALERTAS DE PATRONES ──────────────────────────────── */
+.patterns-bar {
+  display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;
+}
+.pattern-chip {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600;
+  border:1px solid;
+}
+.pattern-chip.CRÍTICO { background:#fecaca; color:#7f1d1d; border-color:#fca5a5; }
+.pattern-chip.ALTO    { background:#fee2e2; color:#dc2626; border-color:#fca5a5; }
+.pattern-chip.MEDIO   { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+
+/* ── TABLA ───────────────────────────────────────────── */
+.table-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-sm);
+}
+.table-toolbar {
+  padding:10px 16px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:8px;
+}
+.table-title { font-size:13px; font-weight:600; }
+.search-input {
+  height:30px; border:1px solid var(--border-mid); border-radius:var(--radius-sm);
+  padding:0 10px; font-size:12px; outline:none; width:180px; color:var(--ink);
+}
+.search-input:focus { border-color:var(--accent); }
+
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+thead th {
+  padding:8px 12px; text-align:left; font-size:10px; font-weight:700;
+  color:var(--ink-light); text-transform:uppercase; letter-spacing:.04em;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  white-space:nowrap; cursor:pointer; user-select:none;
+}
+thead th:hover  { background:#e9eaf0; }
+thead th.sorted { color:var(--accent); }
+
+tbody tr.vrow { border-bottom:1px solid var(--border); cursor:pointer; transition:background .08s; }
+tbody tr.vrow:hover { background:var(--accent-dim); }
+tbody tr.vrow td { padding:9px 12px; font-weight:500; }
+
+/* ── EXPAND DETAIL ───────────────────────────────────── */
+.expand-body { display:none; }
+.expand-body.open { display:table-row-group; }
+.exp-inner { background:#fafbff; border-top:1px solid var(--border); padding:12px 16px 16px 36px; }
+
+.exp-section-title {
+  font-size:10px; font-weight:700; color:var(--ink-light);
+  text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; margin-top:12px;
+}
+.exp-section-title:first-child { margin-top:0; }
+
+/* ── TRIP CARDS ──────────────────────────────────────── */
+.trip-list { display:flex; flex-direction:column; gap:5px; }
+.trip-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:8px 12px;
+  display:grid;
+  grid-template-columns: 80px 90px 70px 70px 80px 1fr auto;
+  align-items:start; gap:8px; font-size:11px;
+  transition:border-color .08s;
+}
+.trip-card:hover { border-color:var(--accent); }
+.trip-card.risk-CRÍTICO { border-left:3px solid var(--critical); }
+.trip-card.risk-ALTO    { border-left:3px solid var(--danger); }
+.trip-card.risk-MEDIO   { border-left:3px solid var(--warn); }
+.trip-card.risk-BAJO    { border-left:3px solid var(--accent); }
+.trip-card.risk-NORMAL  { border-left:3px solid var(--ok); }
+
+.trip-date   { font-weight:600; color:var(--ink); }
+.trip-time   { color:var(--ink-mid); }
+.trip-dist   { font-weight:700; color:var(--accent); }
+.trip-dur    { color:var(--ink-mid); }
+.trip-driver { color:var(--ink-mid); font-size:10px; }
+.trip-reasons{ }
+.trip-reason { font-size:10px; color:var(--ink-mid); display:flex; align-items:center; gap:3px; }
+.trip-reason::before { content:'·'; color:var(--ink-light); }
+.trip-actions{ display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+
+/* ── PATRONES EN DETALLE ─────────────────────────────── */
+.pattern-list { display:flex; flex-wrap:wrap; gap:6px; }
+.pattern-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:4px; font-size:10px; font-weight:600; border:1px solid;
+}
+.pattern-badge.CRÍTICO { background:#fecaca; color:#7f1d1d; border-color:#fca5a5; }
+.pattern-badge.ALTO    { background:#fee2e2; color:#dc2626; border-color:#fca5a5; }
+.pattern-badge.MEDIO   { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+
+/* ── PILLS ───────────────────────────────────────────── */
+.pill { display:inline-flex; align-items:center; padding:2px 7px;
+  border-radius:12px; font-size:10px; font-weight:700; }
+.pill-ok      { background:var(--ok-dim);       color:var(--ok); }
+.pill-danger  { background:var(--danger-dim);   color:var(--danger); }
+.pill-warn    { background:var(--warn-dim);      color:var(--warn); }
+.pill-critical{ background:var(--critical-dim);  color:var(--critical); }
+.pill-accent  { background:var(--accent-dim);    color:var(--accent); }
+.pill-neutral { background:var(--surface);       color:var(--ink-light); border:1px solid var(--border); }
+
+/* ── RIESGO BADGE ────────────────────────────────────── */
+.risk-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700;
+}
+
+/* ── MINI BAR ────────────────────────────────────────── */
+.mini-bar { display:flex; align-items:center; gap:5px; }
+.mini-bg  { width:70px; height:4px; background:var(--border); border-radius:2px; }
+.mini-fill{ height:100%; border-radius:2px; }
+
+/* ── STOP BADGE ──────────────────────────────────────── */
+.stop-badge {
+  display:inline-flex; align-items:center; gap:3px;
+  background:#fffbeb; color:#92400e; padding:2px 6px;
+  border-radius:10px; font-size:10px; border:1px solid #fde68a;
+}
+
+/* ── INFO BAR ────────────────────────────────────────── */
+.info-bar {
+  background:var(--accent-dim); border:1px solid #bfdbfe;
+  border-radius:var(--radius-sm); padding:7px 12px;
+  font-size:11px; color:var(--accent);
+  display:flex; align-items:center; gap:7px; margin-bottom:12px;
+}
+.info-bar svg { width:13px; height:13px; stroke:currentColor; fill:none;
+  stroke-width:2; flex-shrink:0; }
+
+/* ── ESTADO ──────────────────────────────────────────── */
+.state-area {
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; padding:50px 20px; gap:10px;
+  color:var(--ink-light); text-align:center;
+}
+.state-area svg { width:40px; height:40px; stroke:var(--border-mid); fill:none;
+  stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
+.state-area p { font-size:12px; max-width:360px; line-height:1.6; }
+.spinner {
+  width:28px; height:28px; border:2.5px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin .65s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.progress-msg { font-size:11px; color:var(--ink-mid); }
+
+/* ── TABLA FOOTER ────────────────────────────────────── */
+.table-footer {
+  padding:8px 16px; border-top:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:11px; color:var(--ink-light);
+}
+
+/* ── LINK ────────────────────────────────────────────── */
+.trip-link {
+  display:inline-flex; align-items:center; gap:3px;
+  padding:3px 7px; border-radius:4px; font-size:10px; font-weight:600;
+  background:var(--accent-dim); color:var(--accent);
+  text-decoration:none; border:1px solid transparent;
+  transition:background .1s;
+}
+.trip-link:hover { background:#dbeafe; }
+
+</style>
+</head>
+<body>
+<div id="vtc-app">
+
+  <!-- HEADER -->
+  <header class="vtc-header">
+    <div class="vtc-header-left">
+      <div class="vtc-logo">
+        <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+      </div>
+      <span class="vtc-title">Auditoría VTC</span>
+      <span class="vtc-version">v3.0</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span class="vtc-db-badge" id="dbBadge">—</span>
+      <span class="vtc-rule-status missing" id="ruleStatus">⚠ Regla no detectada</span>
+      <button class="btn btn-sm" id="btnExport" style="display:none" onclick="UI.exportExcel()">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Exportar Excel
+      </button>
+    </div>
+  </header>
+
+  <div class="vtc-main">
+
+    <!-- UPLOAD -->
+    <div class="upload-zone" id="dropZone"
+      ondragover="UI.onDrag(event,true)" ondragleave="UI.onDrag(event,false)"
+      ondrop="UI.onDrop(event)" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
+      <input type="file" id="fileInput" accept=".csv" onchange="UI.handleFile(this.files[0])"/>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="settings-bar">
+      <div class="sg">
+        <label>Tolerancia horaria (min)</label>
+        <input type="number" id="cfgTolerance" value="5" min="1" max="30" style="width:80px"/>
+      </div>
+      <div class="sg">
+        <label>Distancia mínima (km)</label>
+        <input type="number" id="cfgMinDist" value="0.5" min="0" step="0.1" style="width:90px"/>
+      </div>
+      <div class="sg">
+        <label>Parada sospechosa (s)</label>
+        <input type="number" id="cfgSuspectStop" value="90" min="45" step="15" style="width:90px"/>
+      </div>
+      <div class="sg">
+        <label>Filtrar vehículo</label>
+        <select id="cfgVehicle"><option value="all">Todos</option></select>
+      </div>
+      <div class="sg">
+        <label>Mostrar viajes</label>
+        <select id="cfgShow">
+          <option value="unmatched">Solo no registrados</option>
+          <option value="risky">Con riesgo ≥ MEDIO</option>
+          <option value="all">Todos</option>
+        </select>
+      </div>
+      <div class="sg">
+        <label>Ordenar por</label>
+        <select id="cfgSort" onchange="UI.resort()">
+          <option value="unmatched">No registrados ↓</option>
+          <option value="avgRisk">Riesgo medio ↓</option>
+          <option value="total">Trips totales ↓</option>
+          <option value="plateOrig">Matrícula ↑</option>
+        </select>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:flex-end">
+        <button class="btn btn-primary" id="btnRun" onclick="UI.run()" disabled>
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Analizar
+        </button>
+      </div>
+    </div>
+
+    <!-- RESULTADOS -->
+    <div id="resultsArea">
+      <div class="state-area">
+        <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+        <p>Carga el CSV de la APP y pulsa <strong>Analizar</strong> para iniciar la auditoría.</p>
+      </div>
+    </div>
+
+  </div><!-- /vtc-main -->
+</div><!-- /vtc-app -->
+
+<!-- ── MÓDULOS ──────────────────────────────────────── -->
+
+
+
+
+
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   UI — Capa de presentación y controlador principal
+   V3.0
+   ═══════════════════════════════════════════════════════ */
+
+// Estado de aplicación
+const AppState = {
+  csvTrips:  [],
+  result:    null,    // resultado completo de AuditEngine.run()
+  serverStr: 'my.geotab.com',
+  dbStr:     '',
+};
+
+/* ── INIT GEOTAB ──────────────────────────────────────── */
+if (typeof geotab === 'undefined') window.geotab = { addin: {} };
+
+geotab.addin.blunvtcauditoriav3 = () => ({
+  initialize(api, state, callback) {
+    DataManager.init(api, null);
+    api.getSession(session => {
+      AppState.serverStr = session?.server   || 'my.geotab.com';
+      AppState.dbStr     = session?.database || '';
+      DataManager.init(api, session);
+      _el('dbBadge').textContent = AppState.dbStr || 'Geotab';
+
+      // Buscar la regla Parada Rápida en segundo plano
+      DataManager.getQuickStopRuleId().then(id => {
+        const el = _el('ruleStatus');
+        if (id) {
+          el.className = 'vtc-rule-status found';
+          el.textContent = '✓ Regla Parada Rápida';
+        } else {
+          el.className = 'vtc-rule-status missing';
+          el.textContent = '⚠ Regla no detectada';
+        }
+      });
+
+      callback();
+    });
+  },
+  focus() {},
+  blur()  {}
+});
+
+/* ── CSV PARSER ───────────────────────────────────────── */
+const CSVParser = {
+  parse(text) {
+    text = text.replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    const hdr   = lines[0].split(';');
+    const idx   = {};
+    hdr.forEach((h,i) => { idx[h.trim()] = i; });
+
+    const trips = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols  = lines[i].split(';');
+      if ((cols[idx['Estado del viaje']]||'').trim() !== 'completed') continue;
+      const plate = _normPlate(cols[idx['Matrícula']]||'');
+      const req   = _parseDate((cols[idx['Hora de la solicitud del viaje']]||'').trim());
+      const arr   = _parseDate((cols[idx['Hora de llegada del viaje']]||'').trim());
+      if (!plate || !req || !arr) continue;
+      trips.push({
+        uuid:      cols[idx['UUID del viaje']],
+        conductor: `${cols[idx['Nombre del conductor']]||''} ${cols[idx['Apellido del conductor']]||''}`.trim(),
+        plate, plateRaw: cols[idx['Matrícula']],
+        reqTime: req, arrTime: arr,
+        dist: parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.')),
+      });
+    }
+    return trips;
+  }
+};
+
+/* ── UI ───────────────────────────────────────────────── */
+const UI = {
+
+  onDrag(e, over) {
+    e.preventDefault();
+    _el('dropZone').classList.toggle('drag', over);
+  },
+  onDrop(e) {
+    e.preventDefault();
+    _el('dropZone').classList.remove('drag');
+    this.handleFile(e.dataTransfer.files[0]);
+  },
+  handleFile(file) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      AppState.csvTrips = CSVParser.parse(ev.target.result);
+      const plates = [...new Set(AppState.csvTrips.map(t => t.plate))];
+      _el('uploadLabel').innerHTML =
+        `<strong style="color:var(--ok)">✓ ${file.name}</strong> — ${AppState.csvTrips.length.toLocaleString('es')} viajes cargados`;
+
+      // Poblar selector de vehículo
+      const sel = _el('cfgVehicle');
+      sel.innerHTML = '<option value="all">Todos</option>';
+      plates.sort().forEach(p => {
+        const o = document.createElement('option');
+        o.value = p; o.textContent = p; sel.appendChild(o);
+      });
+      _el('btnRun').disabled = false;
+    };
+    r.readAsText(file, 'utf-8');
+  },
+
+  async run() {
+    if (!AppState.csvTrips.length) return;
+    _showLoading('Iniciando auditoría…');
+
+    const dates  = AppState.csvTrips.map(t => t.reqTime).filter(Boolean);
+    const minDate = new Date(Math.min(...dates)); minDate.setHours(0,0,0,0);
+    const maxDate = new Date(Math.max(...dates)); maxDate.setHours(23,59,59,999);
+
+    try {
+      const result = await AuditEngine.run({
+        csvTrips:   AppState.csvTrips,
+        fromDate:   minDate.toISOString(),
+        toDate:     maxDate.toISOString(),
+        tolerance:  parseInt(_el('cfgTolerance').value) || 5,
+        minDist:    parseFloat(_el('cfgMinDist').value) || 0.5,
+        onProgress: msg => _updateLoading(msg),
+      });
+
+      AppState.result = result;
+
+      if (result.error === 'NO_DEVICES') {
+        _showDeviceError(result); return;
+      }
+      if (result.error === 'NO_TRIPS') {
+        _showNoTrips(result); return;
+      }
+
+      this.render();
+    } catch(err) {
+      console.error(err);
+      _showError('Error inesperado: ' + (err?.message || String(err)));
+    }
+  },
+
+  resort() { if (AppState.result?.ok) this.render(); },
+
+  render() {
+    const result  = AppState.result;
+    if (!result?.ok) return;
+
+    const filterV = _el('cfgVehicle').value;
+    const show    = _el('cfgShow').value;
+    const sortKey = _el('cfgSort').value;
+
+    let trips = result.trips;
+    if (filterV !== 'all') trips = trips.filter(t => t.plate === filterV);
+
+    // Agrupar por vehículo
+    const byPlate = {};
+    trips.forEach(t => {
+      if (!byPlate[t.plate]) byPlate[t.plate] = {
+        plate: t.plate, plateOrig: t.plateOrig,
+        deviceName: t.deviceName, deviceId: t.deviceId,
+        total:0, matched:0, unmatched:0, trips:[],
+        totalStops:0, totalStopSec:0,
+      };
+      const v = byPlate[t.plate];
+      v.total++; v.trips.push(t);
+      if (t.matched) v.matched++; else v.unmatched++;
+      v.totalStops   += t.stops?.count    || 0;
+      v.totalStopSec += t.stops?.totalSec || 0;
+    });
+
+    // Calcular riesgo medio por vehículo
+    Object.values(byPlate).forEach(v => {
+      const scores = v.trips.map(t => t.audit?.score || 0);
+      v.avgRisk = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
+      v.riskLevel = RiskEngine.getLevel(v.avgRisk);
+      v.criticalTrips = v.trips.filter(t => t.audit?.score >= 80).length;
+    });
+
+    let vehicles = Object.values(byPlate);
+
+    // Ordenar
+    const sortDir = { unmatched:-1, avgRisk:-1, total:-1, plateOrig:1 }[sortKey] || -1;
+    vehicles.sort((a,b) => (a[sortKey] > b[sortKey] ? 1 : -1) * sortDir);
+
+    const html = [];
+    const s    = result.stats;
+
+    // ── INFO BAR ───────────────────────────────────────
+    html.push(`
+    <div class="info-bar">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Período ${_fmtDate(new Date(result.meta.fromDate))} – ${_fmtDate(new Date(result.meta.toDate))} ·
+      Tolerancia ±${result.meta.tolerance} min · Distancia mínima ≥ ${result.meta.minDist} km ·
+      ${result.meta.vehiclesMatched} vehículos ·
+      ${result.ruleStatus.found ? '✓ Regla Parada Rápida activa' : '⚠ Regla Parada Rápida no encontrada (sin datos de paradas)'}
+    </div>`);
+
+    // ── DASHBOARD ──────────────────────────────────────
+    const cvgColor = s.coverage>=85?'var(--ok)':s.coverage>=60?'var(--warn)':'var(--danger)';
+    html.push(`<div class="dashboard">
+      <div class="metric m-accent">
+        <div class="metric-label">Trips Geotab</div>
+        <div class="metric-value">${s.totalGeotab.toLocaleString('es')}</div>
+        <div class="metric-sub">mov. real ≥ ${result.meta.minDist} km</div>
+      </div>
+      <div class="metric m-ok">
+        <div class="metric-label">Registrados APP</div>
+        <div class="metric-value">${s.matched.toLocaleString('es')}</div>
+        <div class="metric-sub">${s.coverage.toFixed(1)}% de cobertura</div>
+      </div>
+      <div class="metric m-danger">
+        <div class="metric-label">No registrados</div>
+        <div class="metric-value">${s.unmatched.toLocaleString('es')}</div>
+        <div class="metric-sub">sin reflejo en la APP</div>
+      </div>
+      <div class="metric m-warn">
+        <div class="metric-label">🚨 Sospechosos</div>
+        <div class="metric-value">${s.suspicious.toLocaleString('es')}</div>
+        <div class="metric-sub">riesgo ≥ MEDIO</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Tiempo detenido</div>
+        <div class="metric-value">${_fmtHM(s.totalStopsSec)}</div>
+        <div class="metric-sub">en paradas rápidas</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Paradas rápidas</div>
+        <div class="metric-value">${s.totalStopCount.toLocaleString('es')}</div>
+        <div class="metric-sub">eventos totales</div>
+      </div>
+      <div class="metric ${s.riskAgg?.avgScore>=60?'m-danger':s.riskAgg?.avgScore>=40?'m-warn':'m-ok'}">
+        <div class="metric-label">Riesgo medio</div>
+        <div class="metric-value">${s.riskAgg?.avgScore||0}</div>
+        <div class="metric-sub">${s.riskAgg?.avgLevel?.label||'—'}</div>
+      </div>
+      <div class="metric m-critical">
+        <div class="metric-label">Vehículos críticos</div>
+        <div class="metric-value">${vehicles.filter(v=>v.avgRisk>=80).length}</div>
+        <div class="metric-sub">con riesgo CRÍTICO</div>
+      </div>
+    </div>`);
+
+    // ── BARRA DE COBERTURA ─────────────────────────────
+    html.push(`
+    <div class="coverage-row">
+      <span class="coverage-label">Cobertura APP</span>
+      <div class="coverage-track">
+        <div class="coverage-fill" style="width:${s.coverage.toFixed(1)}%;background:${cvgColor}"></div>
+      </div>
+      <span class="coverage-pct" style="color:${cvgColor}">${s.coverage.toFixed(1)}%</span>
+    </div>`);
+
+    // ── PATRONES GLOBALES ──────────────────────────────
+    const allPatterns = Object.entries(result.patterns);
+    if (allPatterns.length) {
+      html.push('<div class="patterns-bar">');
+      allPatterns.forEach(([plate, pats]) => {
+        pats.forEach(p => {
+          html.push(`<span class="pattern-chip ${p.severity}" title="${plate}: ${p.description}">
+            ⚡ ${plate} — ${p.label}
+          </span>`);
+        });
+      });
+      html.push('</div>');
+    }
+
+    // ── TABLA POR VEHÍCULO ─────────────────────────────
+    html.push(`
+    <div class="table-card">
+      <div class="table-toolbar">
+        <span class="table-title">Vehículos — ${vehicles.length} activos</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="search-input" id="searchInput" placeholder="Buscar matrícula…" oninput="UI.filterTable()"/>
+        </div>
+      </div>
+      <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Matrícula</th>
+          <th>Nombre Geotab</th>
+          <th>Trips</th>
+          <th>En APP</th>
+          <th>No en APP</th>
+          <th>Paradas</th>
+          <th>Riesgo medio</th>
+          <th>Cobertura</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="vtcTableBody">`);
+
+    vehicles.forEach((v, vi) => {
+      const cov   = v.total ? (v.matched/v.total*100) : 0;
+      const bColor= cov>=85?'var(--ok)':cov>=60?'var(--warn)':'var(--danger)';
+      const rLevel= v.riskLevel;
+      const vPats = result.patterns[v.plate] || [];
+
+      // Filtrar trips para el detalle
+      let detailTrips = v.trips;
+      if (show === 'unmatched') detailTrips = detailTrips.filter(t => !t.matched);
+      else if (show === 'risky') detailTrips = detailTrips.filter(t => t.audit?.score >= 40);
+      detailTrips = [...detailTrips].sort((a,b) => (b.audit?.score||0) - (a.audit?.score||0));
+
+      html.push(`
+      <tr class="vrow" onclick="UI.toggleExpand('exp-${vi}')">
+        <td><strong>${_esc(v.plateOrig)}</strong></td>
+        <td style="color:var(--ink-mid);font-weight:400">${_esc(v.deviceName)}</td>
+        <td>${v.total}</td>
+        <td style="color:var(--ok);font-weight:700">${v.matched}</td>
+        <td style="color:var(--danger);font-weight:700">${v.unmatched}</td>
+        <td>
+          ${v.totalStops > 0
+            ? `<span class="stop-badge">⚠ ${v.totalStops} paradas · ${_fmtHM(v.totalStopSec)}</span>`
+            : '<span style="color:var(--ink-light)">—</span>'}
+        </td>
+        <td>
+          <span class="risk-badge" style="background:${rLevel.bg};color:${rLevel.color}">
+            ${v.avgRisk} — ${rLevel.label}
+          </span>
+          ${v.criticalTrips > 0 ? `<span class="pill pill-critical" style="margin-left:4px">${v.criticalTrips} críticos</span>` : ''}
+        </td>
+        <td>
+          <div class="mini-bar">
+            <div class="mini-bg"><div class="mini-fill" style="width:${cov.toFixed(0)}%;background:${bColor}"></div></div>
+            <span style="font-size:11px;font-weight:600;color:${bColor}">${cov.toFixed(0)}%</span>
+          </div>
+        </td>
+        <td style="color:var(--ink-light);font-size:11px">${detailTrips.length > 0 ? '▼' : '—'}</td>
+      </tr>
+      <tr><td colspan="9" style="padding:0">
+        <div class="expand-body" id="exp-${vi}">
+          <div class="exp-inner">`);
+
+      // Patrones detectados
+      if (vPats.length) {
+        html.push('<div class="exp-section-title">Patrones detectados</div>');
+        html.push('<div class="pattern-list">');
+        vPats.forEach(p => {
+          html.push(`<span class="pattern-badge ${p.severity}" title="${p.description}">⚡ ${p.label}</span>`);
+        });
+        html.push('</div>');
+      }
+
+      // Listado de viajes
+      if (detailTrips.length) {
+        html.push(`<div class="exp-section-title" style="margin-top:${vPats.length?'10px':'0'}">${show==='all'?'Todos los viajes':show==='risky'?'Viajes con riesgo ≥ MEDIO':'Viajes no registrados en APP'} (${detailTrips.length})</div>`);
+        html.push('<div class="trip-list">');
+        detailTrips.forEach(t => {
+          const audit   = t.audit || {};
+          const aLevel  = RiskEngine.getLevel(audit.score||0);
+          const matchBadge = t.matched
+            ? `<span class="pill pill-ok">APP ✓ ${t.csvCount}</span>`
+            : `<span class="pill pill-danger">Sin registrar</span>`;
+          const stopBadge = t.stops?.count > 0
+            ? `<span class="stop-badge">⚠ ${t.stops.count} parada${t.stops.count>1?'s':''} · ${_fmtSec(t.stops.totalSec)}</span>`
+            : '';
+
+          html.push(`
+          <div class="trip-card risk-${aLevel.label}">
+            <div>
+              <div class="trip-date">${_fmtDateShort(t.gStart)}</div>
+            </div>
+            <div>
+              <div class="trip-time">${_fmtTime(t.gStart)}</div>
+              <div class="trip-time">→ ${_fmtTime(t.gStop)}</div>
+            </div>
+            <div>
+              <div class="trip-dist">${t.gDist} km</div>
+              ${t.matched && t.csvTotalDist ? `<div style="font-size:10px;color:var(--ink-light)">${t.csvTotalDist} km APP</div>` : ''}
+            </div>
+            <div class="trip-dur">${t.gDur} min</div>
+            <div>
+              <span class="risk-badge" style="background:${aLevel.bg};color:${aLevel.color};font-size:10px">
+                ${audit.score||0} ${aLevel.label}
+              </span>
+            </div>
+            <div>
+              <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:3px">
+                ${matchBadge} ${stopBadge}
+              </div>
+              <div style="display:flex;flex-direction:column;gap:1px">
+                ${(audit.reasons||[]).slice(0,3).map(r =>
+                  `<div class="trip-reason">${_esc(r.text)} <span style="color:var(--accent);font-weight:600">(+${r.pts})</span></div>`
+                ).join('')}
+              </div>
+              <div style="font-size:10px;color:var(--ink-light);margin-top:2px">${_esc(t.driverName)}</div>
+            </div>
+            <div class="trip-actions">
+              <a class="trip-link" href="${_mapUrl(t, AppState)}" target="_blank">
+                <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Historial
+              </a>
+            </div>
+          </div>`);
+        });
+        html.push('</div>');
+      } else {
+        html.push('<p style="font-size:11px;color:var(--ok);padding:6px 0">✓ Sin viajes que mostrar con el filtro actual.</p>');
+      }
+
+      html.push(`</div></div></td></tr>`);
+    });
+
+    html.push(`</tbody></table></div>
+      <div class="table-footer">
+        <span>${vehicles.length} vehículos · ${s.unmatched} no registrados · ${s.suspicious} sospechosos</span>
+        <span>Haz clic en una fila para expandir el detalle</span>
+      </div>
+    </div>`);
+
+    _el('resultsArea').innerHTML = html.join('');
+    _el('btnExport').style.display = 'inline-flex';
+  },
+
+  toggleExpand(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const open = el.classList.contains('open');
+    document.querySelectorAll('.expand-body.open').forEach(e => e.classList.remove('open'));
+    if (!open) el.classList.add('open');
+  },
+
+  filterTable() {
+    const q = (_el('searchInput')?.value||'').toLowerCase();
+    document.querySelectorAll('.vrow').forEach(row => {
+      const show = row.textContent.toLowerCase().includes(q);
+      row.style.display             = show ? '' : 'none';
+      if (row.nextElementSibling) row.nextElementSibling.style.display = show ? '' : 'none';
+    });
+  },
+
+  exportExcel() {
+    const result = AppState.result;
+    if (!result?.ok) return;
+
+    const unmatched = result.trips.filter(t => !t.matched);
+    const wb = XLSX.utils.book_new();
+
+    // Hoja 1: Trips sin registrar
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ['Matrícula','Nombre Geotab','Conductor','Fecha','H.Inicio','H.Fin','Min','Km Geotab',
+       'Km APP','Paradas','Tiempo parado','Score Riesgo','Nivel Riesgo','Motivos','Enlace'],
+      ...unmatched.map(t => [
+        t.plateOrig, t.deviceName, t.driverName,
+        _fmtDate(t.gStart), _fmtTime(t.gStart), _fmtTime(t.gStop),
+        t.gDur, t.gDist, t.csvTotalDist,
+        t.stops?.count||0, _fmtSec(t.stops?.totalSec||0),
+        t.audit?.score||0, t.audit?.level||'',
+        (t.audit?.reasons||[]).map(r=>r.text).join(' | '),
+        _mapUrl(t, AppState)
+      ])
+    ]);
+    ws1['!cols'] = [10,18,22,11,8,8,6,9,9,8,11,8,8,40,60].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws1, 'Trips sin registrar');
+
+    // Hoja 2: Resumen por vehículo
+    const byP = {};
+    result.trips.forEach(t => {
+      if (!byP[t.plate]) byP[t.plate]={plateOrig:t.plateOrig,deviceName:t.deviceName,
+        total:0,matched:0,unmatched:0,suspicious:0,stops:0,stopSec:0,scores:[]};
+      const v=byP[t.plate];
+      v.total++; v.scores.push(t.audit?.score||0);
+      if(t.matched) v.matched++; else v.unmatched++;
+      if((t.audit?.score||0)>=40) v.suspicious++;
+      v.stops   += t.stops?.count||0;
+      v.stopSec += t.stops?.totalSec||0;
+    });
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['Matrícula','Nombre','Trips','En APP','No en APP','Sospechosos','Cobertura%','Riesgo Medio','Nivel','Paradas','Tiempo parado'],
+      ...Object.values(byP).map(v=>{
+        const avg=v.scores.length?Math.round(v.scores.reduce((a,b)=>a+b,0)/v.scores.length):0;
+        return [v.plateOrig,v.deviceName,v.total,v.matched,v.unmatched,v.suspicious,
+          +(v.total?v.matched/v.total*100:0).toFixed(1),avg,RiskEngine.getLevel(avg).label,
+          v.stops,_fmtSec(v.stopSec)];
+      })
+    ]);
+    ws2['!cols']=[10,18,6,7,9,10,10,10,8,8,12].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws2, 'Resumen vehículos');
+
+    XLSX.writeFile(wb, `auditoria_vtc_v3_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+};
+
+/* ── HELPERS ─────────────────────────────────────────── */
+function _el(id)    { return document.getElementById(id); }
+function _esc(s)    { return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _normPlate(p){ return String(p||'').replace(/[\s\-]/g,'').toUpperCase().trim(); }
+function _parseDate(s){
+  if (!s) return null;
+  const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]);
+}
+function _fmtDate(d){ return d?d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):''; }
+function _fmtDateShort(d){ return d?d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'}):''; }
+function _fmtTime(d){ return d?d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):''; }
+function _fmtSec(s) {
+  if (!s) return '0s';
+  const m=Math.floor(s/60), sec=Math.floor(s%60);
+  return m>0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+function _fmtHM(s)  {
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+  return h>0 ? `${h}h ${m}m` : `${m}m`;
+}
+function _mapUrl(t, state) {
+  return `https://${state.serverStr}/${state.dbStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${t.gStart.toISOString()},toDate:${t.gStop.toISOString()}`;
+}
+
+function _showLoading(msg) {
+  _el('resultsArea').innerHTML = `<div class="state-area"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
+  _el('btnExport').style.display = 'none';
+}
+function _updateLoading(msg) {
+  const p = document.querySelector('.progress-msg');
+  if (p) p.textContent = msg;
+}
+function _showError(msg) {
+  _el('resultsArea').innerHTML = `<div class="state-area"><p style="color:var(--danger)">${msg}</p></div>`;
+}
+function _showDeviceError(result) {
+  const csvList = result.csvPlates.join(', ');
+  const rows = result.geotabSample.map(d =>
+    `<tr><td style="padding:3px 10px">${d.name}</td><td style="padding:3px 10px">${d.plate||'—'}</td><td style="padding:3px 10px;color:#888">${d.nameNorm}</td></tr>`
+  ).join('');
+  _el('resultsArea').innerHTML = `<div class="state-area" style="align-items:flex-start;padding:20px">
+    <p style="color:var(--danger);font-weight:600;margin-bottom:8px">⚠ Sin coincidencias CSV ↔ Geotab</p>
+    <p style="font-size:11px;margin-bottom:6px"><strong>CSV:</strong> <code>${csvList}</code></p>
+    <p style="font-size:11px;margin-bottom:4px"><strong>Devices Geotab (muestra):</strong></p>
+    <table style="font-size:11px;border-collapse:collapse;border:1px solid #eee">
+      <tr style="background:#f5f5f5;font-weight:bold"><td style="padding:4px 10px">Nombre</td><td style="padding:4px 10px">Matrícula</td><td style="padding:4px 10px">Normalizado</td></tr>
+      ${rows}
+    </table>
+  </div>`;
+}
+function _showNoTrips(result) {
+  _el('resultsArea').innerHTML = `<div class="state-area">
+    <p style="color:var(--warn)">⚠ Se descargaron ${result.totalRaw} trips pero todos tienen distancia < ${result.minDist} km.</p>
+    <p style="font-size:11px;margin-top:6px">Reduce la distancia mínima en la configuración e inténtalo de nuevo.</p>
+  </div>`;
+}
+</script>
+<script>
+/* ══ MÓDULOS V3.0 ══ */
+/* ── data-manager.js ── */
+/**
+ * DataManager — Capa única de acceso a la API de Geotab
+ * Todas las llamadas pasan por aquí. Caché inteligente incluida.
+ * V3.0
+ */
+const DataManager = (() => {
+  let _api = null;
+  let _session = null;
+
+  // Caché en memoria
+  const _cache = {
+    devices:  null,
+    users:    null,
+    quickStopRuleId: null,
+  };
+
+  function _call(method, params) {
+    return new Promise((resolve, reject) => {
+      _api.call(method, params, resolve, reject);
+    });
+  }
+
+  return {
+    init(api, session) {
+      _api = api;
+      _session = session;
+    },
+
+    get session() { return _session; },
+
+    // ── Dispositivos ──────────────────────────────────────
+    async getDevices() {
+      if (_cache.devices) return _cache.devices;
+      const devices = await _call('Get', { typeName: 'Device', resultsLimit: 5000 });
+      _cache.devices = devices;
+      return devices;
+    },
+
+    // ── Usuarios ─────────────────────────────────────────
+    async getUsers() {
+      if (_cache.users) return _cache.users;
+      const users = await _call('Get', { typeName: 'User', resultsLimit: 5000 });
+      _cache.users = users;
+      return users;
+    },
+
+    // ── Regla "Parada Rápida" ─────────────────────────────
+    async getQuickStopRuleId() {
+      if (_cache.quickStopRuleId !== null) return _cache.quickStopRuleId;
+      try {
+        const rules = await _call('Get', {
+          typeName: 'Rule',
+          search: { name: 'Parada Rápida' },
+          resultsLimit: 10
+        });
+        // Intentar también en inglés
+        let rule = rules.find(r =>
+          r.name?.toLowerCase().includes('parada') ||
+          r.name?.toLowerCase().includes('quick stop') ||
+          r.name?.toLowerCase().includes('idling') ||
+          r.name?.toLowerCase().includes('short stop')
+        );
+        // Fallback: ID conocido de entornos Geotab estándar
+        if (!rule) {
+          const allRules = await _call('Get', { typeName: 'Rule', resultsLimit: 200 });
+          rule = allRules.find(r =>
+            r.name?.toLowerCase().includes('parada') ||
+            r.name?.toLowerCase().includes('quick') ||
+            r.name?.toLowerCase().includes('short stop')
+          );
+        }
+        _cache.quickStopRuleId = rule?.id || null;
+        return _cache.quickStopRuleId;
+      } catch(e) {
+        console.warn('[DataManager] No se pudo obtener la regla de Parada Rápida:', e);
+        _cache.quickStopRuleId = null;
+        return null;
+      }
+    },
+
+    // ── Trips ─────────────────────────────────────────────
+    async getTrips(deviceId, fromDate, toDate) {
+      return _call('Get', {
+        typeName: 'Trip',
+        search: { fromDate, toDate, deviceSearch: { id: deviceId } },
+        resultsLimit: 50000
+      });
+    },
+
+    // ── ExceptionEvents (paradas) ─────────────────────────
+    async getExceptionEvents(deviceId, fromDate, toDate, ruleId) {
+      if (!ruleId) return [];
+      try {
+        return await _call('Get', {
+          typeName: 'ExceptionEvent',
+          search: {
+            fromDate, toDate,
+            deviceSearch: { id: deviceId },
+            ruleSearch: { id: ruleId }
+          },
+          resultsLimit: 50000
+        });
+      } catch(e) {
+        console.warn('[DataManager] Error obteniendo ExceptionEvents:', e);
+        return [];
+      }
+    },
+
+    clearCache() { Object.keys(_cache).forEach(k => _cache[k] = null); }
+  };
+})();
+
+
+/* ── stop-analyzer.js ── */
+/**
+ * StopAnalyzer — Asocia ExceptionEvents a trips y calcula métricas de parada
+ * Entrada: trips[], exceptionEvents[]
+ * Salida: enriquece cada trip con trip.stops = { count, totalSec, maxSec, list[] }
+ * V3.0
+ */
+const StopAnalyzer = (() => {
+  // Duración mínima de una parada rápida en segundos (la regla de Geotab cubre <45s,
+  // pero la duración real = duración excepción + 45s base)
+  const QUICK_STOP_BASE_SEC = 45;
+
+  function _durationSec(event) {
+    const from = new Date(event.activeFrom).getTime();
+    const to   = new Date(event.activeTo  || event.activeFrom).getTime();
+    const raw  = Math.max(0, (to - from) / 1000);
+    return raw + QUICK_STOP_BASE_SEC; // duración real
+  }
+
+  return {
+    /**
+     * Enriquece un array de trips con sus paradas rápidas.
+     * @param {Array} trips         - trips descargados de Geotab (ya con _device)
+     * @param {Array} allEvents     - todos los ExceptionEvents del período para ese device
+     * @returns {Array}             - mismos trips con propiedad .stops añadida
+     */
+    analyze(trips, allEvents) {
+      return trips.map(t => {
+        const tStart = new Date(t.start || t.startTime).getTime();
+        const tStop  = new Date(t.stop  || t.stopTime ).getTime();
+
+        const stopsInTrip = allEvents
+          .filter(e => {
+            const eTime = new Date(e.activeFrom).getTime();
+            return eTime >= tStart && eTime <= tStop;
+          })
+          .map(e => ({
+            from:        e.activeFrom,
+            to:          e.activeTo,
+            durationSec: _durationSec(e),
+            lat:         e.location?.y || null,
+            lng:         e.location?.x || null,
+          }));
+
+        const totalSec = stopsInTrip.reduce((s, st) => s + st.durationSec, 0);
+        const maxSec   = stopsInTrip.length ? Math.max(...stopsInTrip.map(s => s.durationSec)) : 0;
+
+        t.stops = {
+          count:    stopsInTrip.length,
+          totalSec: Math.round(totalSec),
+          maxSec:   Math.round(maxSec),
+          list:     stopsInTrip,
+        };
+        return t;
+      });
+    }
+  };
+})();
+
+
+/* ── risk-engine.js ── */
+/**
+ * RiskEngine — Sistema de puntuación de riesgo por viaje
+ * Entrada: enrichedTrip (con .stops ya calculado por StopAnalyzer)
+ * Salida:  trip.audit = { score, level, reasons, confidence }
+ * V3.0
+ */
+const RiskEngine = (() => {
+
+  const LEVELS = [
+    { min: 0,  max: 20,  label: 'NORMAL',   color: '#1a9e6e', bg: '#e0f5ed' },
+    { min: 20, max: 40,  label: 'BAJO',     color: '#3d85c8', bg: '#dceefb' },
+    { min: 40, max: 60,  label: 'MEDIO',    color: '#d97706', bg: '#fef3c7' },
+    { min: 60, max: 80,  label: 'ALTO',     color: '#dc2626', bg: '#fee2e2' },
+    { min: 80, max: Infinity, label: 'CRÍTICO', color: '#7f1d1d', bg: '#fecaca' },
+  ];
+
+  function getLevel(score) {
+    return LEVELS.find(l => score >= l.min && score < l.max) || LEVELS[LEVELS.length - 1];
+  }
+
+  function scoreTrip(trip) {
+    let score = 0;
+    const reasons = [];
+
+    // ── 1. No registrado en APP ───────────────────────────
+    if (!trip.matched) {
+      score += 50;
+      reasons.push({ pts: 50, text: 'No registrado en la APP' });
+    }
+
+    // ── 2. Paradas rápidas ────────────────────────────────
+    const stops = trip.stops || { count: 0, totalSec: 0, maxSec: 0 };
+
+    if (stops.count === 1) {
+      score += 10;
+      reasons.push({ pts: 10, text: '1 parada rápida detectada' });
+    } else if (stops.count === 2) {
+      score += 25;
+      reasons.push({ pts: 25, text: `${stops.count} paradas rápidas detectadas` });
+    } else if (stops.count >= 3) {
+      score += 40;
+      reasons.push({ pts: 40, text: `${stops.count} paradas rápidas detectadas` });
+    }
+
+    // ── 3. Duración de la parada más larga ───────────────
+    if (stops.maxSec >= 300) {        // > 5 min
+      score += 50;
+      reasons.push({ pts: 50, text: `Espera máx. ${_fmtSec(stops.maxSec)} (>5 min)` });
+    } else if (stops.maxSec >= 180) { // 3–5 min
+      score += 30;
+      reasons.push({ pts: 30, text: `Espera máx. ${_fmtSec(stops.maxSec)} (>3 min)` });
+    } else if (stops.maxSec >= 90) {  // 1.5–3 min
+      score += 15;
+      reasons.push({ pts: 15, text: `Espera máx. ${_fmtSec(stops.maxSec)} (>90 s)` });
+    } else if (stops.maxSec >= 45) {  // 45–90 s
+      score += 5;
+      reasons.push({ pts: 5, text: `Espera máx. ${_fmtSec(stops.maxSec)} (>45 s)` });
+    }
+
+    // ── 4. Diferencia de kilómetros ───────────────────────
+    if (trip.matched && trip.csvTotalDist > 0 && trip.gDist > 0) {
+      const pct = Math.abs(trip.gDist - trip.csvTotalDist) / trip.gDist * 100;
+      if (pct >= 20) {
+        score += 35;
+        reasons.push({ pts: 35, text: `Diferencia de km: ${pct.toFixed(0)}% (>20%)` });
+      } else if (pct >= 10) {
+        score += 20;
+        reasons.push({ pts: 20, text: `Diferencia de km: ${pct.toFixed(0)}% (>10%)` });
+      }
+    }
+
+    // ── 5. Longitud del viaje ─────────────────────────────
+    if (trip.gDist >= 20) {
+      score += 20;
+      reasons.push({ pts: 20, text: `Viaje largo: ${trip.gDist} km (>20 km)` });
+    } else if (trip.gDist >= 10) {
+      score += 10;
+      reasons.push({ pts: 10, text: `Viaje largo: ${trip.gDist} km (>10 km)` });
+    }
+
+    // ── 6. Paradas consecutivas múltiples ────────────────
+    if (stops.count >= 2) {
+      score += 20;
+      reasons.push({ pts: 20, text: 'Múltiples paradas consecutivas' });
+    }
+
+    // ── Confidence (cuántos factores hay) ────────────────
+    const confidence = Math.min(100, reasons.length * 20 + (stops.list?.length || 0) * 5);
+
+    score = Math.min(score, 120); // cap
+
+    const level = getLevel(score);
+
+    return {
+      score,
+      level:     level.label,
+      color:     level.color,
+      bg:        level.bg,
+      reasons,
+      confidence,
+    };
+  }
+
+  function _fmtSec(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+
+  return {
+    LEVELS,
+    getLevel,
+
+    /**
+     * Añade trip.audit a cada trip del array
+     */
+    analyze(trips) {
+      return trips.map(t => {
+        t.audit = scoreTrip(t);
+        return t;
+      });
+    },
+
+    /**
+     * Métricas agregadas de una colección de trips auditados
+     */
+    aggregate(trips) {
+      if (!trips.length) return null;
+      const scores  = trips.map(t => t.audit?.score || 0);
+      const avgScore = Math.round(scores.reduce((a,b) => a+b, 0) / scores.length);
+      return {
+        avgScore,
+        avgLevel: getLevel(avgScore),
+        critical: trips.filter(t => t.audit?.score >= 80).length,
+        high:     trips.filter(t => t.audit?.score >= 60 && t.audit?.score < 80).length,
+        medium:   trips.filter(t => t.audit?.score >= 40 && t.audit?.score < 60).length,
+        low:      trips.filter(t => t.audit?.score >= 20 && t.audit?.score < 40).length,
+        normal:   trips.filter(t => t.audit?.score <  20).length,
+      };
+    }
+  };
+})();
+
+
+/* ── pattern-engine.js ── */
+/**
+ * PatternEngine — Detección de patrones de comportamiento VTC
+ * Opera sobre trips enriquecidos y auditados de un mismo vehículo.
+ * V3.0
+ */
+const PatternEngine = (() => {
+
+  /**
+   * Patrón 1: Ciclo operativo VTC (Viaje → Parada → Viaje → Parada → Viaje)
+   * Se detecta cuando hay ≥3 trips con paradas intercaladas
+   */
+  function detectVTCCycle(trips) {
+    if (trips.length < 3) return null;
+    const sorted = [...trips].sort((a,b) => a.gStart - b.gStart);
+    let cycleCount = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const gap = (sorted[i+1].gStart - sorted[i].gStop) / 1000; // seg entre trips
+      if (gap >= 30 && gap <= 600 && sorted[i].stops?.count > 0) { // 30s–10min
+        cycleCount++;
+      }
+    }
+    if (cycleCount >= 2) {
+      return {
+        type:        'VTC_CYCLE',
+        label:       'Ciclo operativo VTC',
+        description: `${cycleCount} ciclos Viaje→Parada→Viaje detectados`,
+        severity:    cycleCount >= 4 ? 'ALTO' : 'MEDIO',
+        count:       cycleCount,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Patrón 2: Paradas cortas consecutivas (≥3 paradas en trips seguidos)
+   */
+  function detectConsecutiveStops(trips) {
+    const sorted = [...trips].sort((a,b) => a.gStart - b.gStart);
+    let maxConsec = 0;
+    let current   = 0;
+    sorted.forEach(t => {
+      if ((t.stops?.count || 0) > 0) { current++; maxConsec = Math.max(maxConsec, current); }
+      else { current = 0; }
+    });
+    if (maxConsec >= 3) {
+      return {
+        type:        'CONSECUTIVE_STOPS',
+        label:       'Paradas cortas consecutivas',
+        description: `Secuencia de ${maxConsec} viajes consecutivos con paradas rápidas`,
+        severity:    maxConsec >= 5 ? 'CRÍTICO' : 'ALTO',
+        count:       maxConsec,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Patrón 3: Concentración de paradas en zona (clustering simple por coordenadas)
+   * Agrupa paradas que están a menos de ~500m entre sí.
+   */
+  function detectZoneConcentration(trips) {
+    const allStops = trips.flatMap(t =>
+      (t.stops?.list || []).filter(s => s.lat && s.lng)
+    );
+    if (allStops.length < 3) return null;
+
+    const clusters = [];
+    const used = new Set();
+
+    allStops.forEach((stop, i) => {
+      if (used.has(i)) return;
+      const cluster = [stop];
+      used.add(i);
+      allStops.forEach((other, j) => {
+        if (used.has(j)) return;
+        const dist = _haversineKm(stop.lat, stop.lng, other.lat, other.lng);
+        if (dist <= 0.5) { cluster.push(other); used.add(j); }
+      });
+      if (cluster.length >= 3) clusters.push(cluster);
+    });
+
+    if (!clusters.length) return null;
+
+    const biggest = clusters.sort((a,b) => b.length - a.length)[0];
+    return {
+      type:        'ZONE_CONCENTRATION',
+      label:       'Concentración de paradas en zona',
+      description: `${biggest.length} paradas detectadas en un radio de 500 m`,
+      severity:    biggest.length >= 6 ? 'ALTO' : 'MEDIO',
+      count:       biggest.length,
+      lat:         biggest[0].lat,
+      lng:         biggest[0].lng,
+    };
+  }
+
+  function _haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLon = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  /**
+   * Patrón 4: Alto porcentaje de viajes sospechosos por vehículo
+   */
+  function detectHighRiskVehicle(trips) {
+    if (trips.length < 5) return null;
+    const suspicious = trips.filter(t => (t.audit?.score || 0) >= 40).length;
+    const pct = suspicious / trips.length * 100;
+    if (pct >= 40) {
+      return {
+        type:        'HIGH_RISK_VEHICLE',
+        label:       'Vehículo de alto riesgo',
+        description: `${pct.toFixed(0)}% de viajes con riesgo medio-alto (${suspicious}/${trips.length})`,
+        severity:    pct >= 70 ? 'CRÍTICO' : 'ALTO',
+        count:       suspicious,
+        pct,
+      };
+    }
+    return null;
+  }
+
+  return {
+    /**
+     * Analiza todos los patrones para un array de trips de un mismo vehículo.
+     * @returns {Array} lista de patrones detectados (puede ser vacía)
+     */
+    analyzeVehicle(trips) {
+      const patterns = [
+        detectVTCCycle(trips),
+        detectConsecutiveStops(trips),
+        detectZoneConcentration(trips),
+        detectHighRiskVehicle(trips),
+      ].filter(Boolean);
+      return patterns;
+    },
+
+    /**
+     * Analiza patrones de toda la flota (agrupa por vehículo internamente)
+     * @param {Array} allTrips - todos los trips enriquecidos y auditados
+     * @returns {Object}       - { [plate]: patterns[] }
+     */
+    analyzeAll(allTrips) {
+      const byVehicle = {};
+      allTrips.forEach(t => {
+        if (!byVehicle[t.plate]) byVehicle[t.plate] = [];
+        byVehicle[t.plate].push(t);
+      });
+      const result = {};
+      Object.entries(byVehicle).forEach(([plate, trips]) => {
+        const patterns = PatternEngine.analyzeVehicle(trips);
+        if (patterns.length) result[plate] = patterns;
+      });
+      return result;
+    }
+  };
+})();
+
+
+/* ── audit-engine.js ── */
+/**
+ * AuditEngine — Orquestador principal
+ * Coordina DataManager → StopAnalyzer → RiskEngine → PatternEngine
+ * y devuelve el estado completo listo para que UI lo pinte.
+ * V3.0
+ */
+const AuditEngine = (() => {
+
+  // Normaliza matrícula: elimina espacios y guiones, mayúsculas
+  function _normPlate(p) {
+    return String(p || '').replace(/[\s\-]/g, '').toUpperCase().trim();
+  }
+
+  function _fmtDateShort(d) {
+    return d ? d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit' }) : '';
+  }
+
+  /**
+   * Punto de entrada principal.
+   * @param {Object} opts
+   *   csvTrips    - array de viajes del CSV ya parseados
+   *   fromDate    - ISO string
+   *   toDate      - ISO string
+   *   tolerance   - minutos
+   *   minDist     - km
+   *   onProgress  - callback(msg) para actualizar UI
+   * @returns {Object} resultado completo de la auditoría
+   */
+  async function run({ csvTrips, fromDate, toDate, tolerance, minDist, onProgress }) {
+    const tolMs = tolerance * 60 * 1000;
+
+    // ── 1. Entidades base ────────────────────────────────
+    onProgress('Cargando vehículos y usuarios…');
+    const [devices, users] = await Promise.all([
+      DataManager.getDevices(),
+      DataManager.getUsers(),
+    ]);
+
+    const userMap = {};
+    users.forEach(u => {
+      userMap[u.id] = (u.firstName && u.lastName)
+        ? `${u.firstName} ${u.lastName}`
+        : (u.name || 'Sin nombre');
+    });
+
+    // ── 2. Cruce matrícula CSV ↔ Geotab ──────────────────
+    const plateToDevice = {};
+    devices.forEach(d => {
+      const byName = _normPlate(d.name);
+      if (byName) plateToDevice[byName] = d;
+      const byLic = _normPlate(d.licensePlate);
+      if (byLic && !plateToDevice[byLic]) plateToDevice[byLic] = d;
+    });
+
+    const csvPlates = new Set(csvTrips.map(t => t.plate));
+    const targetDevices = [...new Set(
+      [...csvPlates].map(p => plateToDevice[p]).filter(Boolean)
+    )];
+
+    if (!targetDevices.length) {
+      return {
+        error: 'NO_DEVICES',
+        csvPlates: [...csvPlates],
+        geotabSample: devices.slice(0,30).map(d => ({
+          name: d.name, plate: d.licensePlate,
+          nameNorm: _normPlate(d.name), plateNorm: _normPlate(d.licensePlate)
+        }))
+      };
+    }
+
+    // ── 3. Buscar regla Parada Rápida ────────────────────
+    onProgress('Buscando regla "Parada Rápida"…');
+    const quickStopRuleId = await DataManager.getQuickStopRuleId();
+    const ruleStatus = quickStopRuleId
+      ? { found: true, id: quickStopRuleId }
+      : { found: false, id: null };
+
+    // ── 4. Descargar trips + eventos por vehículo ────────
+    let allRawTrips = [];
+    for (let i = 0; i < targetDevices.length; i++) {
+      const dev = targetDevices[i];
+      onProgress(`Descargando datos… ${i+1}/${targetDevices.length}: ${dev.licensePlate || dev.name}`);
+
+      const [trips, events] = await Promise.all([
+        DataManager.getTrips(dev.id, fromDate, toDate),
+        DataManager.getExceptionEvents(dev.id, fromDate, toDate, quickStopRuleId)
+      ]);
+
+      // Asociar device y paradas a cada trip
+      const analyzed = StopAnalyzer.analyze(
+        trips.map(t => ({ ...t, _device: dev })),
+        events
+      );
+      allRawTrips = allRawTrips.concat(analyzed);
+    }
+
+    // ── 5. Filtrar por distancia mínima ──────────────────
+    onProgress('Calculando riesgo…');
+    const validTrips = allRawTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
+
+    if (!validTrips.length) {
+      return {
+        error: 'NO_TRIPS',
+        totalRaw: allRawTrips.length,
+        minDist,
+        fromDate, toDate,
+        ruleStatus,
+      };
+    }
+
+    // ── 6. Enriquecer: cruce CSV + resolución de matrícula ─
+    const enriched = validTrips.map(t => {
+      const dev          = t._device;
+      const plateByName  = _normPlate(dev.name);
+      const plateByLic   = _normPlate(dev.licensePlate);
+      const plate        = csvPlates.has(plateByName) ? plateByName
+                         : csvPlates.has(plateByLic)  ? plateByLic
+                         : plateByName;
+
+      const gStart = new Date(t.start || t.startTime);
+      const gStop  = new Date(t.stop  || t.stopTime);
+      const gDist  = (t.distance || 0) / 1000;
+
+      let driverName = 'Sin conductor';
+      if (t.driver?.id && !['UnknownDriverId','NoDriverId'].includes(t.driver.id)) {
+        driverName = userMap[t.driver.id] || t.driver.id;
+      }
+
+      const matchedCSV = csvTrips.filter(c => {
+        if (c.plate !== plate || !c.reqTime || !c.arrTime) return false;
+        return c.reqTime.getTime() >= gStart.getTime() - tolMs &&
+               c.arrTime.getTime() <= gStop.getTime()  + tolMs;
+      });
+
+      return {
+        // Identidad
+        gId:          t.id,
+        plate,
+        plateOrig:    dev.licensePlate || dev.name,
+        deviceId:     dev.id,
+        deviceName:   dev.name,
+        driverName,
+        // Temporal
+        gStart, gStop,
+        gDur:         Math.round((gStop - gStart) / 60000),
+        // Distancia
+        gDist:        +gDist.toFixed(2),
+        // Match CSV
+        matched:      matchedCSV.length > 0,
+        csvCount:     matchedCSV.length,
+        csvTotalDist: +matchedCSV.reduce((s,c) => s+(c.dist||0), 0).toFixed(2),
+        // Paradas (ya calculadas por StopAnalyzer)
+        stops:        t.stops,
+      };
+    });
+
+    // ── 7. Motor de Riesgo ────────────────────────────────
+    const audited = RiskEngine.analyze(enriched);
+
+    // ── 8. Motor de Patrones ──────────────────────────────
+    onProgress('Detectando patrones…');
+    const patterns = PatternEngine.analyzeAll(audited);
+
+    // ── 9. Estadísticas globales ──────────────────────────
+    const stats = _buildStats(audited, csvTrips, patterns);
+
+    return {
+      ok:         true,
+      trips:      audited,
+      patterns,
+      stats,
+      ruleStatus,
+      meta: {
+        fromDate, toDate, tolerance, minDist,
+        csvPlates: [...csvPlates],
+        vehiclesMatched: targetDevices.length,
+      }
+    };
+  }
+
+  function _buildStats(trips, csvTrips, patterns) {
+    const totalGeotab    = trips.length;
+    const matched        = trips.filter(t => t.matched).length;
+    const unmatched      = totalGeotab - matched;
+    const suspicious     = trips.filter(t => t.audit?.score >= 40).length;
+    const totalStopsSec  = trips.reduce((s,t) => s + (t.stops?.totalSec||0), 0);
+    const totalStopCount = trips.reduce((s,t) => s + (t.stops?.count||0), 0);
+    const riskAgg        = RiskEngine.aggregate(trips);
+    const vehiclesWithPatterns = Object.keys(patterns).length;
+
+    return {
+      totalGeotab, matched, unmatched, suspicious,
+      coverage: totalGeotab ? (matched/totalGeotab*100) : 0,
+      totalStopsSec, totalStopCount,
+      riskAgg, vehiclesWithPatterns,
+      csvTotal: csvTrips.length,
+    };
+  }
+
+  return { run, normPlate: _normPlate };
+})();
+
+</script>
+</body>
+</html>
