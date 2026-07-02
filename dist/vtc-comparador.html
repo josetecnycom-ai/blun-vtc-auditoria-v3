@@ -1,0 +1,1211 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AuditorÃ­a de Viajes VTC v3.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* â”€â”€ TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#vtc-app-wrapper {
+  --ink:        #1a1a2e;
+  --ink-mid:    #4a4a6a;
+  --ink-light:  #8888aa;
+  --surface:    #f7f7fb;
+  --card:       #ffffff;
+  --border:     #e2e2ee;
+  --border-mid: #c8c8e0;
+  --accent:     #3d5af1;
+  --accent-dim: #e8ecfe;
+  --ok:         #1a9e6e;
+  --ok-dim:     #e0f5ed;
+  --warn:       #d97706;
+  --warn-dim:   #fef3c7;
+  --danger:     #dc2626;
+  --danger-dim: #fee2e2;
+  --radius:     10px;
+  --radius-sm:  6px;
+  --shadow:     0 1px 3px rgba(0,0,40,.07), 0 4px 12px rgba(0,0,40,.05);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+}
+#vtc-app-wrapper * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* â”€â”€ HEADER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.header{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:0 24px;height:54px;display:flex;align-items:center;
+  justify-content:space-between;
+}
+.header-left{display:flex;align-items:center;gap:10px;}
+.header-logo{
+  width:32px;height:32px;border-radius:8px;
+  background:var(--accent);display:flex;align-items:center;justify-content:center;
+}
+.header-logo svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;}
+.header h1{font-size:15px;font-weight:600;color:var(--ink);}
+.header-sub{font-size:12px;color:var(--ink-light);margin-left:4px;}
+.badge-db{
+  background:var(--accent-dim);color:var(--accent);
+  font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;
+  letter-spacing:.03em;
+}
+
+/* â”€â”€ LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.main{padding:20px 24px;max-width:1380px;}
+
+/* â”€â”€ UPLOAD ZONE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.upload-zone{
+  border:2px dashed var(--border-mid);border-radius:var(--radius);
+  padding:36px 24px;text-align:center;cursor:pointer;
+  transition:border-color .15s,background .15s;
+  background:var(--card);margin-bottom:20px;
+}
+.upload-zone:hover,.upload-zone.drag{
+  border-color:var(--accent);background:var(--accent-dim);}
+.upload-zone svg{width:36px;height:36px;stroke:var(--ink-light);fill:none;
+  stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px;}
+.upload-zone.drag svg{stroke:var(--accent);}
+.upload-zone p{color:var(--ink-mid);font-size:13px;}
+.upload-zone strong{color:var(--accent);}
+.upload-zone input{display:none;}
+
+/* â”€â”€ SETTINGS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.settings-bar{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;
+  display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;
+}
+.setting-group{display:flex;flex-direction:column;gap:4px;}
+.setting-group label{font-size:11px;font-weight:600;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;}
+.setting-group input,.setting-group select{
+  height:34px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);
+  padding:0 10px;font-size:13px;color:var(--ink);background:#fff;outline:none;
+  min-width:130px;
+}
+.setting-group input:focus,.setting-group select:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,90,241,.12);}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;
+  font-weight:600;cursor:pointer;border:1px solid var(--border-mid);
+  background:#fff;color:var(--ink);transition:all .12s;
+}
+.btn:hover{background:var(--surface);}
+.btn:active{transform:scale(.98);}
+.btn svg{width:14px;height:14px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:#2d49e0;}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+.btn-ghost{border-color:transparent;background:transparent;}
+.btn-ghost:hover{background:var(--surface);}
+
+/* â”€â”€ METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:12px;margin-bottom:20px;}
+.metric{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 16px;
+  display:flex;flex-direction:column;gap:4px;
+}
+.metric-label{font-size:11px;font-weight:600;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;}
+.metric-value{font-size:28px;font-weight:700;line-height:1.1;color:var(--ink);}
+.metric-sub{font-size:11px;color:var(--ink-light);}
+.metric.m-danger .metric-value{color:var(--danger);}
+.metric.m-ok .metric-value{color:var(--ok);}
+.metric.m-warn .metric-value{color:var(--warn);}
+.metric.m-accent .metric-value{color:var(--accent);}
+
+/* â”€â”€ PROGRESS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.coverage-bar-wrap{margin-bottom:20px;}
+.coverage-label{font-size:12px;color:var(--ink-mid);margin-bottom:6px;
+  display:flex;justify-content:space-between;}
+.coverage-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.coverage-fill{height:100%;border-radius:4px;background:var(--ok);
+  transition:width .6s ease;}
+
+/* â”€â”€ TABLE CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.table-card{background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.table-toolbar{
+  padding:12px 18px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+}
+.table-title{font-size:14px;font-weight:600;color:var(--ink);}
+.table-controls{display:flex;gap:8px;align-items:center;}
+.search{
+  height:32px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);
+  padding:0 10px;font-size:13px;outline:none;width:210px;color:var(--ink);
+}
+.search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,90,241,.1);}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{
+  padding:9px 14px;text-align:left;
+  font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+thead th:hover{background:#ececf6;}
+thead th.sorted{color:var(--accent);}
+tbody tr.vehicle-row{
+  border-bottom:1px solid var(--border);
+  cursor:pointer;transition:background .08s;
+}
+tbody tr.vehicle-row:hover{background:var(--accent-dim);}
+tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
+
+/* â”€â”€ EXPAND ROWS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.expand-section{display:none;}
+.expand-section.open{display:table-row-group;}
+.expand-inner td{padding:0!important;}
+.trips-sub{
+  background:#fafafe;border-top:1px solid var(--border);
+  padding:12px 18px 16px 42px;
+}
+.trips-sub-title{font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.trip-list{display:flex;flex-direction:column;gap:6px;}
+.trip-item{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:10px 14px;
+  display:grid;grid-template-columns:100px 90px 90px 90px 1fr auto;
+  align-items:center;gap:10px;font-size:12px;
+}
+.trip-item:hover{border-color:var(--accent);}
+.trip-date{font-weight:600;color:var(--ink);}
+.trip-time{color:var(--ink-mid);}
+.trip-dist{font-weight:600;color:var(--accent);}
+.trip-dur{color:var(--ink-mid);}
+.trip-route{color:var(--ink-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:11px;}
+.trip-actions{display:flex;gap:6px;}
+.trip-link{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;
+  background:var(--accent-dim);color:var(--accent);
+  text-decoration:none;border:1px solid transparent;
+  transition:background .1s;
+}
+.trip-link:hover{background:#d5dcfc;}
+
+/* â”€â”€ PILLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.pill{display:inline-flex;align-items:center;padding:2px 8px;
+  border-radius:20px;font-size:11px;font-weight:600;}
+.pill-ok{background:var(--ok-dim);color:var(--ok);}
+.pill-warn{background:var(--warn-dim);color:var(--warn);}
+.pill-danger{background:var(--danger-dim);color:var(--danger);}
+.pill-neutral{background:var(--surface);color:var(--ink-light);border:1px solid var(--border);}
+
+/* â”€â”€ MINI BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.mini-bar{display:flex;align-items:center;gap:6px;}
+.mini-bar-bg{width:80px;height:5px;background:var(--border);border-radius:3px;}
+.mini-bar-fill{height:100%;border-radius:3px;}
+
+/* â”€â”€ STATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;gap:12px;color:var(--ink-light);}
+.state svg{width:44px;height:44px;stroke:var(--border-mid);fill:none;
+  stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;}
+.state p{font-size:13px;text-align:center;max-width:320px;line-height:1.6;}
+.spinner{width:32px;height:32px;border:2.5px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .65s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.progress-msg{font-size:12px;color:var(--ink-mid);text-align:center;margin-top:6px;}
+
+/* â”€â”€ INFO BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.info-bar{
+  background:var(--accent-dim);border:1px solid #c5d0fa;
+  border-radius:var(--radius-sm);padding:9px 14px;margin-bottom:16px;
+  font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;
+}
+.info-bar svg{width:14px;height:14px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+
+/* â”€â”€ TABLE FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.table-footer{
+  padding:10px 18px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:12px;color:var(--ink-light);
+}
+
+</style>
+</head>
+<body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
+
+<div id="vtc-app-wrapper">
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+    </div>
+    <h1>AuditorÃ­a de Viajes VTC v3.0</h1>
+    <span class="header-sub">APP vs Geotab</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="badge-db" id="dbNameBadge">blun</span>
+    <button class="btn" id="btnExport" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Exportar Excel
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="dropZone">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <p id="uploadLabel">Arrastra el CSV de la APP aquÃ­ o <strong>haz clic para seleccionar</strong></p>
+    <input type="file" id="fileInput" accept=".csv" />
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings-bar">
+    <div class="setting-group">
+      <label>Tolerancia horaria (min)</label>
+      <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Distancia mÃ­nima Geotab (km)</label>
+      <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Filtrar vehÃ­culo</label>
+      <select id="filterVehicle">
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label>Mostrar en detalle</label>
+      <select id="filterShow">
+        <option value="unmatched">Solo no registrados en APP</option>
+        <option value="all">Todos los trips de Geotab</option>
+      </select>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
+      <button class="btn btn-primary" id="btnRun" disabled>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Comparar y Auditar
+      </button>
+    </div>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div id="resultsArea">
+    <div class="state">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+      <p>Carga el CSV de la APP y pulsa <strong>Comparar y Auditar</strong> para cruzar datos y calcular el riesgo.</p>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// --- data-manager.js ---
+// data-manager.js
+// Maneja toda la comunicaciÃ³n con Geotab, el parseo del CSV y el estado de los datos
+
+const DataManager = (function() {
+    let api = null;
+    
+    // CachÃ© de entidades
+    let cache = {
+        users: null,
+        devices: null,
+        rules: null
+    };
+
+    // Estado del CSV
+    let csvData = {
+        trips: [],
+        plates: new Set(),
+        minDate: null,
+        maxDate: null
+    };
+
+    // â”€â”€ NORMALIZAR MATRÃCULA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function normPlate(p) {
+        return String(p || '').replace(/[\s\-]/g, '').toUpperCase().trim();
+    }
+
+    // â”€â”€ PARSEAR FECHA DD/MM/YYYY HH:MM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function parseDate(s) {
+        if (!s) return null;
+        const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+    }
+
+    // â”€â”€ WRAPPER API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function callApi(method, params) {
+        return new Promise((resolve, reject) => {
+            if (!api) return reject(new Error("API no inicializada"));
+            api.call(method, params, resolve, reject);
+        });
+    }
+
+    return {
+        init: function(geotabApi) {
+            api = geotabApi;
+        },
+
+        // â”€â”€ CACHÃ‰ INTELIGENTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        getUsers: async function() {
+            if (cache.users) return cache.users;
+            const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
+            cache.users = {};
+            users.forEach(u => {
+                cache.users[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
+            });
+            return cache.users;
+        },
+
+        getDevices: async function() {
+            if (cache.devices) return cache.devices;
+            const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
+            cache.devices = {
+                byId: {},
+                byPlate: {} // Mapeo de matrÃ­cula normalizada a device
+            };
+            devices.forEach(d => {
+                cache.devices.byId[d.id] = d;
+                const np = normPlate(d.name);
+                if (np) cache.devices.byPlate[np] = d;
+            });
+            return cache.devices;
+        },
+
+        getRules: async function() {
+            if (cache.rules) return cache.rules;
+            const rules = await callApi('Get', { typeName: 'Rule', resultsLimit: 5000 });
+            cache.rules = rules;
+            return cache.rules;
+        },
+
+        // â”€â”€ LLAMADAS DIRECTAS (Sin CachÃ© Global) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        getTrips: async function(deviceId, fromDate, toDate) {
+            return await callApi('Get', {
+                typeName: 'Trip',
+                search: {
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    deviceSearch: { id: deviceId }
+                },
+                resultsLimit: 50000
+            });
+        },
+
+        getExceptionEvents: async function(ruleId, fromDate, toDate) {
+            return await callApi('Get', {
+                typeName: 'ExceptionEvent',
+                search: {
+                    ruleSearch: { id: ruleId },
+                    fromDate: fromDate,
+                    toDate: toDate
+                },
+                resultsLimit: 100000
+            });
+        },
+
+        // â”€â”€ GESTIÃ“N DE CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        parseCSV: function(text, filename) {
+            text = text.replace(/^\uFEFF/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) throw new Error("CSV vacÃ­o o sin datos vÃ¡lidos");
+
+            const header = lines[0].split(';');
+            const idx = {};
+            header.forEach((h, i) => { idx[h.trim()] = i; });
+
+            const trips = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(';');
+                const estado = (cols[idx['Estado del viaje']] || '').trim();
+                if (estado !== 'completed') continue;
+
+                const plate = normPlate(cols[idx['MatrÃ­cula']]);
+                const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
+                const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
+                if (!plate || !reqStr || !arrStr) continue;
+
+                trips.push({
+                    uuid: cols[idx['UUID del viaje']],
+                    conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
+                    plate: plate,
+                    plateRaw: cols[idx['MatrÃ­cula']],
+                    reqTime: parseDate(reqStr),
+                    arrTime: parseDate(arrStr),
+                    origin:  cols[idx['DirecciÃ³n de recogida']] || '',
+                    dest:    cols[idx['DirecciÃ³n de destino']] || '',
+                    dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
+                    product: cols[idx['Tipo de producto']] || '',
+                    payment: cols[idx['Tipo de pago']] || '',
+                });
+            }
+
+            if (trips.length === 0) throw new Error("No se encontraron viajes 'completed' vÃ¡lidos en el CSV.");
+
+            const allDates = trips.map(t => t.reqTime).filter(Boolean);
+            const minDate = new Date(Math.min(...allDates));
+            const maxDate = new Date(Math.max(...allDates));
+            minDate.setHours(0,0,0,0);
+            maxDate.setHours(23,59,59,999);
+
+            csvData.trips = trips;
+            csvData.plates = new Set(trips.map(t => t.plate));
+            csvData.minDate = minDate.toISOString();
+            csvData.maxDate = maxDate.toISOString();
+
+            return {
+                tripsCount: trips.length,
+                platesCount: csvData.plates.size,
+                minDate: minDate,
+                maxDate: maxDate
+            };
+        },
+
+        getCsvData: function() {
+            return csvData;
+        },
+        
+        getNormPlate: function(plate) {
+            return normPlate(plate);
+        }
+    };
+})();
+
+
+// --- rule-manager.js ---
+// rule-manager.js
+// Responsable de buscar y cachear la regla de auditorÃ­a (Ej: Parada RÃ¡pida)
+
+const RuleManager = (function() {
+    let ruleIdParadaRapida = null;
+    const RULE_NAME = "Parada RÃ¡pida"; // Literal exacto confirmado por el usuario
+
+    return {
+        init: async function() {
+            try {
+                const rules = await DataManager.getRules();
+                // Buscar regla por nombre
+                const rule = rules.find(r => r.name === RULE_NAME);
+                
+                if (rule) {
+                    ruleIdParadaRapida = rule.id;
+                    console.log(`[RuleManager] Regla encontrada: "${RULE_NAME}" (ID: ${ruleIdParadaRapida})`);
+                } else {
+                    console.warn(`[RuleManager] ATENCIÃ“N: No se encontrÃ³ la regla "${RULE_NAME}" en MyGeotab.`);
+                }
+            } catch (e) {
+                console.error("[RuleManager] Error al inicializar reglas", e);
+            }
+        },
+
+        getParadaRapidaId: function() {
+            return ruleIdParadaRapida;
+        },
+
+        hasParadaRapidaRule: function() {
+            return ruleIdParadaRapida !== null;
+        }
+    };
+})();
+
+
+// --- stop-analyzer.js ---
+// stop-analyzer.js
+// Analiza las excepciones (Paradas RÃ¡pidas) y calcula tiempos reales
+
+const StopAnalyzer = (function() {
+    
+    // Constante de tiempo a sumar por cada excepciÃ³n (tiempo que tarda la regla en saltar)
+    const OFFSET_SECONDS = 45;
+
+    return {
+        /**
+         * Cruza los viajes de Geotab con los eventos de excepciÃ³n
+         * @param {Array} trips - Array de viajes Geotab (raw)
+         * @param {Array} exceptionEvents - Array de eventos de la regla Parada RÃ¡pida
+         */
+        analyzeTrips: function(trips, exceptionEvents) {
+            // Pre-agrupar excepciones por ID de vehÃ­culo para acelerar la bÃºsqueda
+            const eventsByDevice = {};
+            exceptionEvents.forEach(e => {
+                const devId = e.device.id;
+                if (!eventsByDevice[devId]) eventsByDevice[devId] = [];
+                eventsByDevice[devId].push(e);
+            });
+
+            // Analizar cada viaje
+            trips.forEach(trip => {
+                const devId = trip.device ? trip.device.id : trip._device.id;
+                const tripEvents = eventsByDevice[devId] || [];
+                const tripStart = new Date(trip.start || trip.startTime);
+                const tripStop = new Date(trip.stop || trip.stopTime);
+
+                // Filtrar las excepciones que ocurrieron DURANTE este viaje
+                const exceptionsInTrip = tripEvents.filter(e => {
+                    const eStart = new Date(e.activeFrom);
+                    const eStop = new Date(e.activeTo);
+                    return eStart >= tripStart && eStop <= tripStop;
+                });
+
+                let quickStops = 0;
+                let totalStopTime = 0;
+                let maxStop = 0;
+                let stopLocations = []; 
+
+                exceptionsInTrip.forEach(e => {
+                    const durationMs = new Date(e.activeTo) - new Date(e.activeFrom);
+                    const durationSecs = durationMs / 1000;
+                    
+                    // DuraciÃ³n real = duraciÃ³n de la excepciÃ³n + OFFSET
+                    const realDuration = durationSecs + OFFSET_SECONDS;
+
+                    quickStops++;
+                    totalStopTime += realDuration;
+                    if (realDuration > maxStop) {
+                        maxStop = realDuration;
+                    }
+                    
+                    // Guardamos la estructura para el futuro (Fase 7 - Mapa)
+                    stopLocations.push({
+                        activeFrom: e.activeFrom,
+                        activeTo: e.activeTo,
+                        durationSecs: realDuration
+                    });
+                });
+
+                // Inyectamos el anÃ¡lisis en el viaje
+                trip._stopAnalysis = {
+                    quickStops: quickStops,
+                    totalStopTime: totalStopTime,
+                    maxStop: maxStop,
+                    stopLocations: stopLocations
+                };
+            });
+
+            return trips;
+        }
+    };
+})();
+
+
+// --- risk-engine.js ---
+// risk-engine.js
+// EvalÃºa las condiciones del viaje y le asigna un Nivel de Riesgo y PuntuaciÃ³n
+
+const RiskEngine = (function() {
+
+    function getRiskLevel(score) {
+        if (score <= 20) return "NORMAL";
+        if (score <= 40) return "BAJO";
+        if (score <= 60) return "MEDIO";
+        if (score <= 80) return "ALTO";
+        return "CRÃTICO";
+    }
+
+    return {
+        /**
+         * Calcula el riesgo de un viaje Geotab ya cruzado con APP y analizado por StopAnalyzer
+         * @param {Object} trip - El viaje enriquecido (con `matched` y `_stopAnalysis`)
+         * @returns {Object} El objeto audit que se adjuntarÃ¡ al viaje
+         */
+        evaluateTrip: function(trip) {
+            let score = 0;
+            let reasons = [];
+
+            const isMatched = trip.matched;
+            const gDist = (trip.distance || 0) / 1000;
+            const stops = trip._stopAnalysis || { quickStops: 0, stopLocations: [] };
+            
+            // 1. Base: No registrado en APP
+            if (!isMatched) {
+                score += 50;
+                reasons.push("Viaje no registrado en la APP (+50)");
+            } else {
+                reasons.push("Viaje correctamente registrado");
+            }
+
+            // 2. Cantidad de Paradas RÃ¡pidas
+            if (stops.quickStops === 1) {
+                score += 10;
+                reasons.push("1 parada rÃ¡pida detectada (+10)");
+            } else if (stops.quickStops === 2) {
+                score += 25;
+                reasons.push("2 paradas rÃ¡pidas detectadas (+25)");
+            } else if (stops.quickStops >= 3) {
+                score += 40;
+                reasons.push(`${stops.quickStops} paradas rÃ¡pidas detectadas (+40)`);
+            }
+
+            // 3. DuraciÃ³n de las Paradas (evaluamos cada parada)
+            stops.stopLocations.forEach(stop => {
+                const s = stop.durationSecs;
+                if (s > 300) { // MÃ¡s de 5 min
+                    score += 50;
+                    reasons.push(`Parada excesiva >5 min (${Math.round(s/60)}m) (+50)`);
+                } else if (s > 180) { // MÃ¡s de 3 min
+                    score += 30;
+                    reasons.push(`Parada larga >3 min (${Math.round(s/60)}m) (+30)`);
+                } else if (s > 90) { // 90-180 s
+                    score += 15;
+                    reasons.push(`Parada moderada >90s (${Math.round(s)}s) (+15)`);
+                } else if (s >= 45) { // 45-90 s
+                    score += 5;
+                    reasons.push(`Parada corta 45-90s (${Math.round(s)}s) (+5)`);
+                }
+            });
+
+            // 4. Distancia total del viaje
+            if (gDist > 20) {
+                score += 20;
+                reasons.push(`Trayecto largo >20km (${gDist.toFixed(1)}km) (+20)`);
+            } else if (gDist > 10) {
+                score += 10;
+                reasons.push(`Trayecto medio >10km (${gDist.toFixed(1)}km) (+10)`);
+            }
+
+            // 5. Diferencia de kilÃ³metros (solo si estÃ¡ registrado)
+            if (isMatched && trip.csvDist !== null) {
+                // Prevenir divisiÃ³n por cero si el viaje de Geotab tiene 0 km extraÃ±amente
+                const safeGDist = gDist > 0 ? gDist : 0.1;
+                const diffKm = Math.abs(gDist - trip.csvDist);
+                const diffPct = (diffKm / safeGDist) * 100;
+
+                if (diffPct > 20) {
+                    score += 35;
+                    reasons.push(`Diferencia distancia >20% (APP: ${trip.csvDist}km vs Geotab: ${gDist.toFixed(1)}km) (+35)`);
+                } else if (diffPct > 10) {
+                    score += 20;
+                    reasons.push(`Diferencia distancia >10% (APP: ${trip.csvDist}km vs Geotab: ${gDist.toFixed(1)}km) (+20)`);
+                }
+            }
+
+            const level = getRiskLevel(score);
+            
+            // Limitamos a un mÃ¡ximo lÃ³gico para porcentaje
+            const confidence = Math.min(score, 100);
+
+            return {
+                score: score,
+                level: level,
+                confidence: confidence, // Para usarlo como "Riesgo: X%"
+                reasons: reasons,
+                // Clases CSS auxiliares para pintar en la UI
+                levelClass: level === 'CRÃTICO' ? 'critico' : level === 'ALTO' ? 'alto' : level === 'MEDIO' ? 'medio' : level === 'BAJO' ? 'bajo' : 'normal'
+            };
+        }
+    };
+})();
+
+
+// --- ui.js ---
+// ui.js
+// Maneja todo el renderizado visual y eventos DOM
+
+const UI = (function() {
+
+    let currentTrips = []; // Cache for exporting/sorting
+
+    // â”€â”€ FORMATTERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function fmtDate(d) {
+        if (!d) return '';
+        return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+    }
+    function fmtTime(d) {
+        if (!d) return '';
+        return d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+    }
+    function fmtDateShort(d) {
+        if (!d) return '';
+        return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit'});
+    }
+    function fmtDur(s) {
+        if (!s) return '0m';
+        const m = Math.floor(s / 60);
+        return m > 0 ? `${m}m` : `${Math.round(s)}s`;
+    }
+
+    // â”€â”€ ENLACE AL MAPA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function buildMapUrl(t) {
+        const from = encodeURIComponent(t.gStart.toISOString());
+        const to   = encodeURIComponent(t.gStop.toISOString());
+        return `https://my.geotab.com/blun/#tripsHistory,${t.deviceId},${from},${to}`;
+    }
+
+    // â”€â”€ DOM UTILS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function showLoading(msg) {
+        document.getElementById('resultsArea').innerHTML =
+            `<div class="state"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
+        document.getElementById('btnExport').style.display = 'none';
+    }
+    function updateLoading(msg) {
+        const p = document.querySelector('.progress-msg');
+        if (p) p.textContent = msg;
+    }
+    function showError(msg) {
+        document.getElementById('resultsArea').innerHTML =
+            `<div class="state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>${msg}</p></div>`;
+    }
+
+    return {
+        showLoading, updateLoading, showError,
+
+        // â”€â”€ RENDER PRINCIPAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        renderResults: function(trips, csvData, tolerance, minDist) {
+            currentTrips = trips;
+            const filterPl = document.getElementById('filterVehicle').value;
+            const showFilter = document.getElementById('filterShow').value;
+
+            let data = trips;
+            if (filterPl !== 'all') data = data.filter(r => r.plate === filterPl);
+
+            // MÃ©tricas
+            const totalGeotab = data.length;
+            const totalMatched = data.filter(r => r.matched).length;
+            const totalUnmatched = totalGeotab - totalMatched;
+            
+            // Nuevas mÃ©tricas V3
+            const suspects = data.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÃTICO').length;
+            const totalStopTimeSecs = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.totalStopTime : 0), 0);
+            const totalQuickStops = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.quickStops : 0), 0);
+            const avgRiskScore = totalGeotab > 0 ? (data.reduce((acc, r) => acc + r.audit.score, 0) / totalGeotab) : 0;
+
+            const coveragePct = totalGeotab > 0 ? ((totalMatched / totalGeotab) * 100).toFixed(1) : 0;
+            const coverageClass = coveragePct >= 85 ? 'm-ok' : coveragePct >= 60 ? 'm-warn' : 'm-danger';
+
+            // Agrupar por vehÃ­culo
+            const byPlate = {};
+            data.forEach(r => {
+                if (!byPlate[r.plate]) {
+                    byPlate[r.plate] = {
+                        plate: r.plate, plateOrig: r.plateOrig,
+                        deviceName: r.deviceName, deviceId: r.deviceId,
+                        total: 0, matched: 0, unmatched: 0,
+                        avgRisk: 0, _totalRisk: 0,
+                        trips: []
+                    };
+                }
+                byPlate[r.plate].total++;
+                if (r.matched) byPlate[r.plate].matched++;
+                else byPlate[r.plate].unmatched++;
+                byPlate[r.plate]._totalRisk += r.audit.score;
+                byPlate[r.plate].trips.push(r);
+            });
+
+            let vehicles = Object.values(byPlate);
+            // Calculamos media de riesgo por vehÃ­culo
+            vehicles.forEach(v => { v.avgRisk = v._totalRisk / v.total; });
+            
+            // Por defecto en V3 ordenamos los vehÃ­culos por su media de riesgo (de peor a mejor)
+            vehicles.sort((a,b) => b.avgRisk - a.avgRisk);
+
+            const html = [];
+
+            // â”€â”€ NUEVO DASHBOARD V3 â”€â”€
+            html.push(`
+            <div class="info-bar">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                PerÃ­odo: ${fmtDateShort(new Date(csvData.minDate))} â€“ ${fmtDateShort(new Date(csvData.maxDate))} Â·
+                Tolerancia Â±${tolerance} min Â· Distancia mÃ­nima â‰¥ ${minDist} km Â·
+                ${csvData.platesCount} vehÃ­culos en CSV Â· ${vehicles.length} vehÃ­culos en Geotab
+            </div>
+            
+            <div class="metrics" style="grid-template-columns: repeat(auto-fit,minmax(140px,1fr));">
+                <div class="metric m-accent">
+                    <div class="metric-label">Trips Geotab</div>
+                    <div class="metric-value">${totalGeotab}</div>
+                </div>
+                <div class="metric m-ok">
+                    <div class="metric-label">Registrados</div>
+                    <div class="metric-value">${totalMatched}</div>
+                </div>
+                <div class="metric m-danger">
+                    <div class="metric-label">No Registrados</div>
+                    <div class="metric-value">${totalUnmatched}</div>
+                </div>
+                <div class="metric m-warn" style="border-color:var(--warn);">
+                    <div class="metric-label">ðŸš¨ Sospechosos</div>
+                    <div class="metric-value">${suspects}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Tiempo Detenido</div>
+                    <div class="metric-value" style="font-size:22px;">${fmtDur(totalStopTimeSecs)}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Paradas RÃ¡pidas</div>
+                    <div class="metric-value" style="font-size:22px;">${totalQuickStops}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Riesgo Medio</div>
+                    <div class="metric-value" style="font-size:22px;">${avgRiskScore.toFixed(0)}%</div>
+                </div>
+            </div>
+            `);
+
+            // â”€â”€ TABLA DE VEHÃCULOS â”€â”€
+            html.push(`
+            <div class="table-card">
+                <div class="table-toolbar">
+                <span class="table-title">AnÃ¡lisis de Flota</span>
+                <div class="table-controls">
+                    <input class="search" id="searchInput" placeholder="Buscar matrÃ­culaâ€¦" onkeyup="
+                        const q = this.value.toLowerCase();
+                        document.querySelectorAll('.vehicle-row').forEach(row => {
+                            const text = row.textContent.toLowerCase();
+                            row.style.display = text.includes(q) ? '' : 'none';
+                            const next = row.nextElementSibling;
+                            if (next) next.style.display = text.includes(q) ? '' : 'none';
+                        });
+                    "/>
+                </div>
+                </div>
+                <div class="table-wrap">
+                <table>
+                <thead><tr>
+                    <th>VehÃ­culo</th>
+                    <th>Trips</th>
+                    <th>Cobertura</th>
+                    <th>Paradas Totales</th>
+                    <th>Riesgo Medio</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>
+            `);
+
+            vehicles.forEach((v, vi) => {
+                const cov = v.total > 0 ? (v.matched/v.total*100) : 0;
+                const totalVStops = v.trips.reduce((acc, t) => acc + (t._stopAnalysis?t._stopAnalysis.quickStops:0), 0);
+                
+                const avgRiskLvl = RiskEngine.evaluateTrip({matched: true, distance: 0, _stopAnalysis:{quickStops:0, stopLocations:[]}}).level; // Fake call just to map score to level logic if needed, actually let's use a simpler logic for the vehicle:
+                let vRiskClass = 'bajo';
+                if(v.avgRisk > 60) vRiskClass = 'critico';
+                else if(v.avgRisk > 40) vRiskClass = 'alto';
+                else if(v.avgRisk > 20) vRiskClass = 'medio';
+
+                const barColor = cov >= 85 ? 'var(--ok)' : cov >= 60 ? 'var(--warn)' : 'var(--danger)';
+
+                let detailTrips = v.trips;
+                if (showFilter === 'unmatched') detailTrips = v.trips.filter(t => !t.matched);
+                detailTrips.sort((a,b) => b.audit.score - a.audit.score); // Ordenar por mayor riesgo primero
+
+                html.push(`
+                <tr class="vehicle-row" onclick="
+                    const el = document.getElementById('exp-${vi}');
+                    const isOpen = el.classList.contains('open');
+                    document.querySelectorAll('.expand-section.open').forEach(e => e.classList.remove('open'));
+                    if (!isOpen) el.classList.add('open');
+                ">
+                    <td><strong>${v.plateOrig}</strong> <small style="color:var(--ink-mid);">${v.deviceName}</small></td>
+                    <td>${v.total} <small style="color:var(--danger)">(${v.unmatched} gaps)</small></td>
+                    <td>
+                        <div class="mini-bar" style="width: 100px;">
+                            <div class="mini-bar-bg" style="width: 100%;"><div class="mini-bar-fill" style="width:${cov.toFixed(0)}%;background:${barColor};"></div></div>
+                            <span style="font-size:10px;">${cov.toFixed(0)}%</span>
+                        </div>
+                    </td>
+                    <td>${totalVStops}</td>
+                    <td>
+                        <span class="pill pill-${vRiskClass}">${v.avgRisk.toFixed(0)}% Riesgo</span>
+                    </td>
+                    <td style="color:var(--ink-light);font-size:12px;">â–¼ ver viajes</td>
+                </tr>
+                `);
+
+                // â”€â”€ DETALLE DEL VIAJE CON ÃNDICE DE CONFIANZA â”€â”€
+                html.push(`<tr><td colspan="6" style="padding:0;">`);
+                html.push(`<div class="expand-section" id="exp-${vi}">`);
+                html.push(`<div class="trips-sub">`);
+                
+                if (detailTrips.length === 0) {
+                    html.push(`<p style="font-size:12px;color:var(--ok);">âœ“ No hay viajes que mostrar con el filtro actual.</p>`);
+                } else {
+                    html.push(`<div class="trip-list">`);
+                    detailTrips.forEach(t => {
+                        const mapUrl = buildMapUrl(t);
+                        const adt = t.audit;
+                        
+                        let reasonsHtml = adt.reasons.map(r => `<li>${r}</li>`).join('');
+
+                        html.push(`
+                        <div class="trip-item" style="display:flex; flex-direction:column; align-items:flex-start; padding: 14px; gap: 8px;">
+                            <div style="display:flex; width: 100%; justify-content: space-between; align-items: center;">
+                                <div style="display:flex; gap: 15px; align-items:center;">
+                                    <span class="badge badge-${adt.levelClass}" style="padding:4px 8px; border-radius:4px; color:white; background:var(--riesgo-${adt.levelClass}); font-weight:bold; font-size:11px;">Riesgo ${adt.confidence}%</span>
+                                    <span class="trip-date">${fmtDate(t.gStart)}</span>
+                                    <span class="trip-time">${fmtTime(t.gStart)} â€“ ${fmtTime(t.gStop)}</span>
+                                    <span class="trip-dist">${t.gDist} km</span>
+                                    <span class="trip-dur">${t.gDur} min</span>
+                                    <span style="font-size:11px; color:var(--ink-mid);">Paradas: <strong>${t._stopAnalysis.quickStops}</strong> (${fmtDur(t._stopAnalysis.totalStopTime)})</span>
+                                </div>
+                                <a class="trip-link" href="${mapUrl}" target="_blank">Ver en Mapa</a>
+                            </div>
+                            <div style="background:var(--surface); padding:8px 12px; border-radius:4px; width:100%; font-size:11px; color:var(--ink-mid);">
+                                <strong style="color:var(--ink);">Motivos del Nivel de Riesgo (${adt.level}):</strong>
+                                <ul style="margin: 4px 0 0 16px; padding:0;">
+                                    ${reasonsHtml}
+                                </ul>
+                            </div>
+                        </div>`);
+                    });
+                    html.push(`</div>`);
+                }
+                html.push(`</div></div></td></tr>`);
+            });
+
+            html.push(`</tbody></table></div>`);
+            html.push(`<div class="table-footer">
+                <span>${vehicles.length} vehÃ­culos analizadost</span>
+            </div>`);
+            html.push(`</div>`);
+
+            document.getElementById('resultsArea').innerHTML = html.join('');
+            document.getElementById('btnExport').style.display = 'inline-flex';
+        },
+
+        // â”€â”€ EXPORT EXCEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        exportExcel: function(csvData) {
+            if (!currentTrips || currentTrips.length === 0) return;
+            const unmatched = currentTrips.filter(r => !r.matched);
+            const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÃTICO');
+            
+            // Excel rows
+            const rows = [
+                ['MatrÃ­cula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'DuraciÃ³n (min)', 'Distancia (km)', 'Riesgo %', 'Nivel', 'Paradas', 'Tiempo Paradas (s)', 'Enlace Mapa'],
+                ...suspects.map(r => [
+                    r.plateOrig, r.deviceName, r.geotabDriverName,
+                    fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
+                    r.gDur, r.gDist, r.audit.confidence, r.audit.level,
+                    r._stopAnalysis.quickStops, r._stopAnalysis.totalStopTime,
+                    buildMapUrl(r)
+                ])
+            ];
+
+            const wb = XLSX.utils.book_new();
+            const ws1 = XLSX.utils.aoa_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws1, 'Viajes Sospechosos');
+
+            const today = new Date().toISOString().slice(0,10);
+            XLSX.writeFile(wb, `auditoria_vtc_${today}.xlsx`);
+        }
+    };
+})();
+
+
+// --- main.js ---
+// main.js
+// Orquestador principal y registro del Add-In en Geotab
+
+if (typeof geotab === 'undefined') {
+    window.geotab = { addin: {} };
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('resultsArea').innerHTML =
+            '<div class="state"><p>Modo standalone â€” conecta a Geotab para datos reales.</p></div>';
+    });
+}
+
+// Registro del addin con el key definido en el JSON
+geotab.addin.blunvtcauditoria = function(api, state) {
+    return {
+        initialize: function(geotabApi, geotabState, callback) {
+            // Inicializar capa de datos
+            DataManager.init(geotabApi);
+            
+            // Binding de eventos UI
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+            
+            // Drag & Drop
+            const dropZone = document.getElementById('dropZone');
+            if (dropZone) {
+                dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag'); });
+                dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('drag'); });
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('drag');
+                    if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+                });
+                dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+            }
+
+            document.getElementById('btnRun').addEventListener('click', runAudit);
+            document.getElementById('btnExport').addEventListener('click', () => {
+                UI.exportExcel(DataManager.getCsvData());
+            });
+
+            // Avisar a Geotab que estamos listos
+            callback();
+        },
+        focus: async function(geotabApi, geotabState) {
+            // Buscar la regla en background al abrir el addin
+            await RuleManager.init();
+        },
+        blur: function() {}
+    };
+
+    function handleFileSelect(e) {
+        if (e.target.files[0]) processFile(e.target.files[0]);
+    }
+
+    function processFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const stats = DataManager.parseCSV(e.target.result, file.name);
+                document.getElementById('uploadLabel').innerHTML = 
+                    `<strong style="color:var(--ok);">âœ“ ${file.name}</strong> â€” ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
+                
+                // Actualizar dropdown de filtro
+                const sel = document.getElementById('filterVehicle');
+                sel.innerHTML = '<option value="all">Todos</option>';
+                const plates = Array.from(DataManager.getCsvData().plates).sort();
+                plates.forEach(p => {
+                    const o = document.createElement('option');
+                    o.value = p; o.textContent = p;
+                    sel.appendChild(o);
+                });
+
+                document.getElementById('btnRun').disabled = false;
+            } catch (err) {
+                alert("Error al parsear el CSV: " + err.message);
+            }
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    async function runAudit() {
+        UI.showLoading("Obteniendo vehÃ­culos y usuarios...");
+        
+        try {
+            const users = await DataManager.getUsers();
+            const devicesCache = await DataManager.getDevices();
+            const csvData = DataManager.getCsvData();
+
+            const targetDevices = Array.from(csvData.plates)
+                .map(p => devicesCache.byPlate[p])
+                .filter(Boolean);
+
+            if (targetDevices.length === 0) {
+                UI.showError("No se encontraron vehÃ­culos en Geotab que coincidan con las matrÃ­culas del CSV.");
+                return;
+            }
+
+            const fromDate = csvData.minDate;
+            const toDate = csvData.maxDate;
+            const tolerance = parseInt(document.getElementById('tolerance').value) || 5;
+            const minDist = parseFloat(document.getElementById('minDist').value) || 0.5;
+
+            // 1. Descargar Viajes
+            let allTrips = [];
+            for (let i=0; i<targetDevices.length; i++) {
+                const dev = targetDevices[i];
+                UI.updateLoading(`Descargando viajes... vehÃ­culo ${i+1}/${targetDevices.length}: ${dev.name}`);
+                try {
+                    const trips = await DataManager.getTrips(dev.id, fromDate, toDate);
+                    trips.forEach(t => t._device = dev);
+                    allTrips = allTrips.concat(trips);
+                } catch(e) {
+                    console.warn("Error descargando viajes del vehiculo", dev.id, e);
+                }
+            }
+
+            const geotabFiltered = allTrips.filter(t => {
+                return ((t.distance || 0) / 1000) >= minDist;
+            });
+
+            // 2. Motor de Paradas
+            if (RuleManager.hasParadaRapidaRule()) {
+                UI.updateLoading("Descargando eventos de paradas rÃ¡pidas de Geotab...");
+                const ruleId = RuleManager.getParadaRapidaId();
+                let allEvents = [];
+                try {
+                    allEvents = await DataManager.getExceptionEvents(ruleId, fromDate, toDate);
+                } catch (e) {
+                    console.error("Error al obtener eventos", e);
+                }
+                
+                UI.updateLoading("Calculando duraciones reales de las paradas...");
+                StopAnalyzer.analyzeTrips(geotabFiltered, allEvents);
+            } else {
+                console.warn("No se analizan paradas porque no se encontrÃ³ la regla");
+                geotabFiltered.forEach(t => t._stopAnalysis = { quickStops:0, totalStopTime:0, maxStop:0, stopLocations:[]});
+            }
+
+            UI.updateLoading("Cruzando datos y calculando Ãndice de Confianza...");
+            
+            // 3. Cruce con CSV y Motor de Riesgo
+            const tolMs = tolerance * 60 * 1000;
+            const enriched = geotabFiltered.map(t => {
+                const dev = t._device;
+                const plate = DataManager.getNormPlate(dev.name);
+                const gStart = new Date(t.start || t.startTime);
+                const gStop = new Date(t.stop || t.stopTime);
+                const gDist = (t.distance || 0) / 1000;
+
+                let driverName = "Desconocido";
+                if (t.driver && t.driver.id !== "UnknownDriverId") {
+                    driverName = users[t.driver.id] || t.driver.id;
+                }
+
+                // Cruce (Misma lÃ³gica V2 validada)
+                const match = csvData.trips.find(c => {
+                    if (c.plate !== plate) return false;
+                    const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
+                    const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
+                    return isAfterStart && isBeforeEnd;
+                });
+
+                let tripData = {
+                    gId: t.id,
+                    gStart: gStart, gStop: gStop,
+                    gDist: +gDist.toFixed(2),
+                    gDur: Math.round((gStop - gStart) / 60000),
+                    plate: plate,
+                    plateOrig: dev.name,
+                    deviceId: dev.id,
+                    deviceName: dev.name,
+                    geotabDriverName: driverName,
+                    matched: !!match,
+                    csvUUID: match ? match.uuid : null,
+                    csvDist: match ? match.dist : null,
+                    _stopAnalysis: t._stopAnalysis
+                };
+
+                // Motor de Riesgo
+                tripData.audit = RiskEngine.evaluateTrip(tripData);
+                
+                return tripData;
+            });
+
+            // 4. Render final
+            UI.renderResults(enriched, csvData, tolerance, minDist);
+
+        } catch (err) {
+            console.error(err);
+            UI.showError("Error durante la auditorÃ­a: " + err.message);
+        }
+    }
+};
+
+
+
+</script>
+</body>
+</html>
+

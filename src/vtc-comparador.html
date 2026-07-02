@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Auditoría de Viajes VTC v3.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- BUILD_INSERT_CSS -->
+</head>
+<body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
+
+<div id="vtc-app-wrapper">
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+    </div>
+    <h1>Auditoría de Viajes VTC v3.0</h1>
+    <span class="header-sub">APP vs Geotab</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="badge-db" id="dbNameBadge">blun</span>
+    <button class="btn" id="btnExport" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Exportar Excel
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="dropZone">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
+    <input type="file" id="fileInput" accept=".csv" />
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings-bar">
+    <div class="setting-group">
+      <label>Tolerancia horaria (min)</label>
+      <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Distancia mínima Geotab (km)</label>
+      <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Filtrar vehículo</label>
+      <select id="filterVehicle">
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label>Mostrar en detalle</label>
+      <select id="filterShow">
+        <option value="unmatched">Solo no registrados en APP</option>
+        <option value="all">Todos los trips de Geotab</option>
+      </select>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
+      <button class="btn btn-primary" id="btnRun" disabled>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Comparar y Auditar
+      </button>
+    </div>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div id="resultsArea">
+    <div class="state">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+      <p>Carga el CSV de la APP y pulsa <strong>Comparar y Auditar</strong> para cruzar datos y calcular el riesgo.</p>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- BUILD_INSERT_JS -->
+</body>
+</html>

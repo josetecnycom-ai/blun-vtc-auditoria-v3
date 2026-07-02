@@ -1,0 +1,14 @@
+{
+  "name": "Auditoría VTC v3.0",
+  "supportEmail": "soporte@eurosuministros.com",
+  "version": "3.0.0",
+  "isSigned": false,
+  "key": "blunvtcauditoria",
+  "items": [{
+    "url": "https://josetecnycom-ai.github.io/blun-vtc-auditoria-v3/dist/vtc-comparador.html",
+    "path": "ActivityLink",
+    "menuName": { "en": "VTC Audit", "es": "Auditoría VTC" },
+    "icon": "https://josetecnycom-ai.github.io/blun-vtc-auditoria-v3/dist/vtc-icon.svg"
+  }],
+  "files": {}
+}
