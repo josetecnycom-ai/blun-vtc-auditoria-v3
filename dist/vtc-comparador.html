@@ -1,12 +1,12 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>AuditorÃ­a de Viajes VTC v3.0</title>
+<title>Auditoría de Viajes VTC v3.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-/* â”€â”€ TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── TOKENS ─────────────────────────────────────────── */
 #vtc-app-wrapper {
   --ink:        #1a1a2e;
   --ink-mid:    #4a4a6a;
@@ -36,7 +36,7 @@
   padding: 0;
 }
 
-/* â”€â”€ HEADER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── HEADER ─────────────────────────────────────────── */
 .header{
   background:var(--card);border-bottom:1px solid var(--border);
   padding:0 24px;height:54px;display:flex;align-items:center;
@@ -57,10 +57,10 @@
   letter-spacing:.03em;
 }
 
-/* â”€â”€ LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── LAYOUT ─────────────────────────────────────────── */
 .main{padding:20px 24px;max-width:1380px;}
 
-/* â”€â”€ UPLOAD ZONE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── UPLOAD ZONE ────────────────────────────────────── */
 .upload-zone{
   border:2px dashed var(--border-mid);border-radius:var(--radius);
   padding:36px 24px;text-align:center;cursor:pointer;
@@ -76,7 +76,7 @@
 .upload-zone strong{color:var(--accent);}
 .upload-zone input{display:none;}
 
-/* â”€â”€ SETTINGS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── SETTINGS BAR ───────────────────────────────────── */
 .settings-bar{
   background:var(--card);border:1px solid var(--border);
   border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;
@@ -109,7 +109,7 @@
 .btn-ghost{border-color:transparent;background:transparent;}
 .btn-ghost:hover{background:var(--surface);}
 
-/* â”€â”€ METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── METRICS ────────────────────────────────────────── */
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
   gap:12px;margin-bottom:20px;}
 .metric{
@@ -126,7 +126,7 @@
 .metric.m-warn .metric-value{color:var(--warn);}
 .metric.m-accent .metric-value{color:var(--accent);}
 
-/* â”€â”€ PROGRESS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── PROGRESS BAR ───────────────────────────────────── */
 .coverage-bar-wrap{margin-bottom:20px;}
 .coverage-label{font-size:12px;color:var(--ink-mid);margin-bottom:6px;
   display:flex;justify-content:space-between;}
@@ -134,7 +134,7 @@
 .coverage-fill{height:100%;border-radius:4px;background:var(--ok);
   transition:width .6s ease;}
 
-/* â”€â”€ TABLE CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── TABLE CARD ─────────────────────────────────────── */
 .table-card{background:var(--card);border:1px solid var(--border);
   border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
 .table-toolbar{
@@ -166,7 +166,7 @@ tbody tr.vehicle-row{
 tbody tr.vehicle-row:hover{background:var(--accent-dim);}
 tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 
-/* â”€â”€ EXPAND ROWS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── EXPAND ROWS ─────────────────────────────────────── */
 .expand-section{display:none;}
 .expand-section.open{display:table-row-group;}
 .expand-inner td{padding:0!important;}
@@ -200,7 +200,7 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 }
 .trip-link:hover{background:#d5dcfc;}
 
-/* â”€â”€ PILLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── PILLS ───────────────────────────────────────────── */
 .pill{display:inline-flex;align-items:center;padding:2px 8px;
   border-radius:20px;font-size:11px;font-weight:600;}
 .pill-ok{background:var(--ok-dim);color:var(--ok);}
@@ -208,12 +208,12 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 .pill-danger{background:var(--danger-dim);color:var(--danger);}
 .pill-neutral{background:var(--surface);color:var(--ink-light);border:1px solid var(--border);}
 
-/* â”€â”€ MINI BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── MINI BAR ────────────────────────────────────────── */
 .mini-bar{display:flex;align-items:center;gap:6px;}
 .mini-bar-bg{width:80px;height:5px;background:var(--border);border-radius:3px;}
 .mini-bar-fill{height:100%;border-radius:3px;}
 
-/* â”€â”€ STATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── STATE ───────────────────────────────────────────── */
 .state{display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:60px 20px;gap:12px;color:var(--ink-light);}
 .state svg{width:44px;height:44px;stroke:var(--border-mid);fill:none;
@@ -226,7 +226,7 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 
 .progress-msg{font-size:12px;color:var(--ink-mid);text-align:center;margin-top:6px;}
 
-/* â”€â”€ INFO BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── INFO BAR ────────────────────────────────────────── */
 .info-bar{
   background:var(--accent-dim);border:1px solid #c5d0fa;
   border-radius:var(--radius-sm);padding:9px 14px;margin-bottom:16px;
@@ -235,7 +235,7 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 .info-bar svg{width:14px;height:14px;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
 
-/* â”€â”€ TABLE FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── TABLE FOOTER ────────────────────────────────────── */
 .table-footer{
   padding:10px 18px;border-top:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;
@@ -253,7 +253,7 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
     <div class="header-logo">
       <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
     </div>
-    <h1>AuditorÃ­a de Viajes VTC v3.0</h1>
+    <h1>Auditoría de Viajes VTC v3.0</h1>
     <span class="header-sub">APP vs Geotab</span>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
@@ -270,7 +270,7 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
   <!-- UPLOAD -->
   <div class="upload-zone" id="dropZone">
     <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    <p id="uploadLabel">Arrastra el CSV de la APP aquÃ­ o <strong>haz clic para seleccionar</strong></p>
+    <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
     <input type="file" id="fileInput" accept=".csv" />
   </div>
 
@@ -281,11 +281,11 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
       <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
     </div>
     <div class="setting-group">
-      <label>Distancia mÃ­nima Geotab (km)</label>
+      <label>Distancia mínima Geotab (km)</label>
       <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
     </div>
     <div class="setting-group">
-      <label>Filtrar vehÃ­culo</label>
+      <label>Filtrar vehículo</label>
       <select id="filterVehicle">
         <option value="all">Todos</option>
       </select>
@@ -319,12 +319,12 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 <script>
 // --- data-manager.js ---
 // data-manager.js
-// Maneja toda la comunicaciÃ³n con Geotab, el parseo del CSV y el estado de los datos
+// Maneja toda la comunicación con Geotab, el parseo del CSV y el estado de los datos
 
 const DataManager = (function() {
     let api = null;
     
-    // CachÃ© de entidades
+    // Caché de entidades
     let cache = {
         users: null,
         devices: null,
@@ -339,12 +339,12 @@ const DataManager = (function() {
         maxDate: null
     };
 
-    // â”€â”€ NORMALIZAR MATRÃCULA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── NORMALIZAR MATRÍCULA ─────────────────────────────────
     function normPlate(p) {
         return String(p || '').replace(/[\s\-]/g, '').toUpperCase().trim();
     }
 
-    // â”€â”€ PARSEAR FECHA DD/MM/YYYY HH:MM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── PARSEAR FECHA DD/MM/YYYY HH:MM ───────────────────────
     function parseDate(s) {
         if (!s) return null;
         const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
@@ -352,7 +352,7 @@ const DataManager = (function() {
         return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
     }
 
-    // â”€â”€ WRAPPER API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── WRAPPER API ──────────────────────────────────────────
     function callApi(method, params) {
         return new Promise((resolve, reject) => {
             if (!api) return reject(new Error("API no inicializada"));
@@ -365,7 +365,7 @@ const DataManager = (function() {
             api = geotabApi;
         },
 
-        // â”€â”€ CACHÃ‰ INTELIGENTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── CACHÉ INTELIGENTE ────────────────────────────────────
         getUsers: async function() {
             if (cache.users) return cache.users;
             const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
@@ -381,7 +381,7 @@ const DataManager = (function() {
             const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
             cache.devices = {
                 byId: {},
-                byPlate: {} // Mapeo de matrÃ­cula normalizada a device
+                byPlate: {} // Mapeo de matrícula normalizada a device
             };
             devices.forEach(d => {
                 cache.devices.byId[d.id] = d;
@@ -398,7 +398,7 @@ const DataManager = (function() {
             return cache.rules;
         },
 
-        // â”€â”€ LLAMADAS DIRECTAS (Sin CachÃ© Global) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── LLAMADAS DIRECTAS (Sin Caché Global) ─────────────────
         getTrips: async function(deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'Trip',
@@ -423,11 +423,11 @@ const DataManager = (function() {
             });
         },
 
-        // â”€â”€ GESTIÃ“N DE CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── GESTIÓN DE CSV ───────────────────────────────────────
         parseCSV: function(text, filename) {
             text = text.replace(/^\uFEFF/, '');
             const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) throw new Error("CSV vacÃ­o o sin datos vÃ¡lidos");
+            if (lines.length < 2) throw new Error("CSV vacío o sin datos válidos");
 
             const header = lines[0].split(';');
             const idx = {};
@@ -439,7 +439,7 @@ const DataManager = (function() {
                 const estado = (cols[idx['Estado del viaje']] || '').trim();
                 if (estado !== 'completed') continue;
 
-                const plate = normPlate(cols[idx['MatrÃ­cula']]);
+                const plate = normPlate(cols[idx['Matrícula']]);
                 const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
                 const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
                 if (!plate || !reqStr || !arrStr) continue;
@@ -448,18 +448,18 @@ const DataManager = (function() {
                     uuid: cols[idx['UUID del viaje']],
                     conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
                     plate: plate,
-                    plateRaw: cols[idx['MatrÃ­cula']],
+                    plateRaw: cols[idx['Matrícula']],
                     reqTime: parseDate(reqStr),
                     arrTime: parseDate(arrStr),
-                    origin:  cols[idx['DirecciÃ³n de recogida']] || '',
-                    dest:    cols[idx['DirecciÃ³n de destino']] || '',
+                    origin:  cols[idx['Dirección de recogida']] || '',
+                    dest:    cols[idx['Dirección de destino']] || '',
                     dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
                     product: cols[idx['Tipo de producto']] || '',
                     payment: cols[idx['Tipo de pago']] || '',
                 });
             }
 
-            if (trips.length === 0) throw new Error("No se encontraron viajes 'completed' vÃ¡lidos en el CSV.");
+            if (trips.length === 0) throw new Error("No se encontraron viajes 'completed' válidos en el CSV.");
 
             const allDates = trips.map(t => t.reqTime).filter(Boolean);
             const minDate = new Date(Math.min(...allDates));
@@ -493,11 +493,11 @@ const DataManager = (function() {
 
 // --- rule-manager.js ---
 // rule-manager.js
-// Responsable de buscar y cachear la regla de auditorÃ­a (Ej: Parada RÃ¡pida)
+// Responsable de buscar y cachear la regla de auditoría (Ej: Parada Rápida)
 
 const RuleManager = (function() {
     let ruleIdParadaRapida = null;
-    const RULE_NAME = "Parada RÃ¡pida"; // Literal exacto confirmado por el usuario
+    const RULE_NAME = "Parada Rápida"; // Literal exacto confirmado por el usuario
 
     return {
         init: async function() {
@@ -510,7 +510,7 @@ const RuleManager = (function() {
                     ruleIdParadaRapida = rule.id;
                     console.log(`[RuleManager] Regla encontrada: "${RULE_NAME}" (ID: ${ruleIdParadaRapida})`);
                 } else {
-                    console.warn(`[RuleManager] ATENCIÃ“N: No se encontrÃ³ la regla "${RULE_NAME}" en MyGeotab.`);
+                    console.warn(`[RuleManager] ATENCIÓN: No se encontró la regla "${RULE_NAME}" en MyGeotab.`);
                 }
             } catch (e) {
                 console.error("[RuleManager] Error al inicializar reglas", e);
@@ -530,21 +530,21 @@ const RuleManager = (function() {
 
 // --- stop-analyzer.js ---
 // stop-analyzer.js
-// Analiza las excepciones (Paradas RÃ¡pidas) y calcula tiempos reales
+// Analiza las excepciones (Paradas Rápidas) y calcula tiempos reales
 
 const StopAnalyzer = (function() {
     
-    // Constante de tiempo a sumar por cada excepciÃ³n (tiempo que tarda la regla en saltar)
+    // Constante de tiempo a sumar por cada excepción (tiempo que tarda la regla en saltar)
     const OFFSET_SECONDS = 45;
 
     return {
         /**
-         * Cruza los viajes de Geotab con los eventos de excepciÃ³n
+         * Cruza los viajes de Geotab con los eventos de excepción
          * @param {Array} trips - Array de viajes Geotab (raw)
-         * @param {Array} exceptionEvents - Array de eventos de la regla Parada RÃ¡pida
+         * @param {Array} exceptionEvents - Array de eventos de la regla Parada Rápida
          */
         analyzeTrips: function(trips, exceptionEvents) {
-            // Pre-agrupar excepciones por ID de vehÃ­culo para acelerar la bÃºsqueda
+            // Pre-agrupar excepciones por ID de vehículo para acelerar la búsqueda
             const eventsByDevice = {};
             exceptionEvents.forEach(e => {
                 const devId = e.device.id;
@@ -575,7 +575,7 @@ const StopAnalyzer = (function() {
                     const durationMs = new Date(e.activeTo) - new Date(e.activeFrom);
                     const durationSecs = durationMs / 1000;
                     
-                    // DuraciÃ³n real = duraciÃ³n de la excepciÃ³n + OFFSET
+                    // Duración real = duración de la excepción + OFFSET
                     const realDuration = durationSecs + OFFSET_SECONDS;
 
                     quickStops++;
@@ -592,7 +592,7 @@ const StopAnalyzer = (function() {
                     });
                 });
 
-                // Inyectamos el anÃ¡lisis en el viaje
+                // Inyectamos el análisis en el viaje
                 trip._stopAnalysis = {
                     quickStops: quickStops,
                     totalStopTime: totalStopTime,
@@ -609,7 +609,7 @@ const StopAnalyzer = (function() {
 
 // --- risk-engine.js ---
 // risk-engine.js
-// EvalÃºa las condiciones del viaje y le asigna un Nivel de Riesgo y PuntuaciÃ³n
+// Evalúa las condiciones del viaje y le asigna un Nivel de Riesgo y Puntuación
 
 const RiskEngine = (function() {
 
@@ -618,14 +618,14 @@ const RiskEngine = (function() {
         if (score <= 40) return "BAJO";
         if (score <= 60) return "MEDIO";
         if (score <= 80) return "ALTO";
-        return "CRÃTICO";
+        return "CRÍTICO";
     }
 
     return {
         /**
          * Calcula el riesgo de un viaje Geotab ya cruzado con APP y analizado por StopAnalyzer
          * @param {Object} trip - El viaje enriquecido (con `matched` y `_stopAnalysis`)
-         * @returns {Object} El objeto audit que se adjuntarÃ¡ al viaje
+         * @returns {Object} El objeto audit que se adjuntará al viaje
          */
         evaluateTrip: function(trip) {
             let score = 0;
@@ -643,25 +643,25 @@ const RiskEngine = (function() {
                 reasons.push("Viaje correctamente registrado");
             }
 
-            // 2. Cantidad de Paradas RÃ¡pidas
+            // 2. Cantidad de Paradas Rápidas
             if (stops.quickStops === 1) {
                 score += 10;
-                reasons.push("1 parada rÃ¡pida detectada (+10)");
+                reasons.push("1 parada rápida detectada (+10)");
             } else if (stops.quickStops === 2) {
                 score += 25;
-                reasons.push("2 paradas rÃ¡pidas detectadas (+25)");
+                reasons.push("2 paradas rápidas detectadas (+25)");
             } else if (stops.quickStops >= 3) {
                 score += 40;
-                reasons.push(`${stops.quickStops} paradas rÃ¡pidas detectadas (+40)`);
+                reasons.push(`${stops.quickStops} paradas rápidas detectadas (+40)`);
             }
 
-            // 3. DuraciÃ³n de las Paradas (evaluamos cada parada)
+            // 3. Duración de las Paradas (evaluamos cada parada)
             stops.stopLocations.forEach(stop => {
                 const s = stop.durationSecs;
-                if (s > 300) { // MÃ¡s de 5 min
+                if (s > 300) { // Más de 5 min
                     score += 50;
                     reasons.push(`Parada excesiva >5 min (${Math.round(s/60)}m) (+50)`);
-                } else if (s > 180) { // MÃ¡s de 3 min
+                } else if (s > 180) { // Más de 3 min
                     score += 30;
                     reasons.push(`Parada larga >3 min (${Math.round(s/60)}m) (+30)`);
                 } else if (s > 90) { // 90-180 s
@@ -682,9 +682,9 @@ const RiskEngine = (function() {
                 reasons.push(`Trayecto medio >10km (${gDist.toFixed(1)}km) (+10)`);
             }
 
-            // 5. Diferencia de kilÃ³metros (solo si estÃ¡ registrado)
+            // 5. Diferencia de kilómetros (solo si está registrado)
             if (isMatched && trip.csvDist !== null) {
-                // Prevenir divisiÃ³n por cero si el viaje de Geotab tiene 0 km extraÃ±amente
+                // Prevenir división por cero si el viaje de Geotab tiene 0 km extrañamente
                 const safeGDist = gDist > 0 ? gDist : 0.1;
                 const diffKm = Math.abs(gDist - trip.csvDist);
                 const diffPct = (diffKm / safeGDist) * 100;
@@ -700,7 +700,7 @@ const RiskEngine = (function() {
 
             const level = getRiskLevel(score);
             
-            // Limitamos a un mÃ¡ximo lÃ³gico para porcentaje
+            // Limitamos a un máximo lógico para porcentaje
             const confidence = Math.min(score, 100);
 
             return {
@@ -709,7 +709,7 @@ const RiskEngine = (function() {
                 confidence: confidence, // Para usarlo como "Riesgo: X%"
                 reasons: reasons,
                 // Clases CSS auxiliares para pintar en la UI
-                levelClass: level === 'CRÃTICO' ? 'critico' : level === 'ALTO' ? 'alto' : level === 'MEDIO' ? 'medio' : level === 'BAJO' ? 'bajo' : 'normal'
+                levelClass: level === 'CRÍTICO' ? 'critico' : level === 'ALTO' ? 'alto' : level === 'MEDIO' ? 'medio' : level === 'BAJO' ? 'bajo' : 'normal'
             };
         }
     };
@@ -724,7 +724,7 @@ const UI = (function() {
 
     let currentTrips = []; // Cache for exporting/sorting
 
-    // â”€â”€ FORMATTERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── FORMATTERS ─────────────────────────────────────────────────
     function fmtDate(d) {
         if (!d) return '';
         return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
@@ -743,14 +743,14 @@ const UI = (function() {
         return m > 0 ? `${m}m` : `${Math.round(s)}s`;
     }
 
-    // â”€â”€ ENLACE AL MAPA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── ENLACE AL MAPA ──────────────────────────────────────────────
     function buildMapUrl(t) {
         const from = encodeURIComponent(t.gStart.toISOString());
         const to   = encodeURIComponent(t.gStop.toISOString());
         return `https://my.geotab.com/blun/#tripsHistory,${t.deviceId},${from},${to}`;
     }
 
-    // â”€â”€ DOM UTILS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── DOM UTILS ───────────────────────────────────────────────────
     function showLoading(msg) {
         document.getElementById('resultsArea').innerHTML =
             `<div class="state"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
@@ -768,7 +768,7 @@ const UI = (function() {
     return {
         showLoading, updateLoading, showError,
 
-        // â”€â”€ RENDER PRINCIPAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── RENDER PRINCIPAL ─────────────────────────────────────
         renderResults: function(trips, csvData, tolerance, minDist) {
             currentTrips = trips;
             const filterPl = document.getElementById('filterVehicle').value;
@@ -777,13 +777,13 @@ const UI = (function() {
             let data = trips;
             if (filterPl !== 'all') data = data.filter(r => r.plate === filterPl);
 
-            // MÃ©tricas
+            // Métricas
             const totalGeotab = data.length;
             const totalMatched = data.filter(r => r.matched).length;
             const totalUnmatched = totalGeotab - totalMatched;
             
-            // Nuevas mÃ©tricas V3
-            const suspects = data.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÃTICO').length;
+            // Nuevas métricas V3
+            const suspects = data.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO').length;
             const totalStopTimeSecs = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.totalStopTime : 0), 0);
             const totalQuickStops = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.quickStops : 0), 0);
             const avgRiskScore = totalGeotab > 0 ? (data.reduce((acc, r) => acc + r.audit.score, 0) / totalGeotab) : 0;
@@ -791,7 +791,7 @@ const UI = (function() {
             const coveragePct = totalGeotab > 0 ? ((totalMatched / totalGeotab) * 100).toFixed(1) : 0;
             const coverageClass = coveragePct >= 85 ? 'm-ok' : coveragePct >= 60 ? 'm-warn' : 'm-danger';
 
-            // Agrupar por vehÃ­culo
+            // Agrupar por vehículo
             const byPlate = {};
             data.forEach(r => {
                 if (!byPlate[r.plate]) {
@@ -811,21 +811,21 @@ const UI = (function() {
             });
 
             let vehicles = Object.values(byPlate);
-            // Calculamos media de riesgo por vehÃ­culo
+            // Calculamos media de riesgo por vehículo
             vehicles.forEach(v => { v.avgRisk = v._totalRisk / v.total; });
             
-            // Por defecto en V3 ordenamos los vehÃ­culos por su media de riesgo (de peor a mejor)
+            // Por defecto en V3 ordenamos los vehículos por su media de riesgo (de peor a mejor)
             vehicles.sort((a,b) => b.avgRisk - a.avgRisk);
 
             const html = [];
 
-            // â”€â”€ NUEVO DASHBOARD V3 â”€â”€
+            // ── NUEVO DASHBOARD V3 ──
             html.push(`
             <div class="info-bar">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                PerÃ­odo: ${fmtDateShort(new Date(csvData.minDate))} â€“ ${fmtDateShort(new Date(csvData.maxDate))} Â·
-                Tolerancia Â±${tolerance} min Â· Distancia mÃ­nima â‰¥ ${minDist} km Â·
-                ${csvData.platesCount} vehÃ­culos en CSV Â· ${vehicles.length} vehÃ­culos en Geotab
+                Período: ${fmtDateShort(new Date(csvData.minDate))} – ${fmtDateShort(new Date(csvData.maxDate))} ·
+                Tolerancia ±${tolerance} min · Distancia mínima ≥ ${minDist} km ·
+                ${csvData.platesCount} vehículos en CSV · ${vehicles.length} vehículos en Geotab
             </div>
             
             <div class="metrics" style="grid-template-columns: repeat(auto-fit,minmax(140px,1fr));">
@@ -842,7 +842,7 @@ const UI = (function() {
                     <div class="metric-value">${totalUnmatched}</div>
                 </div>
                 <div class="metric m-warn" style="border-color:var(--warn);">
-                    <div class="metric-label">ðŸš¨ Sospechosos</div>
+                    <div class="metric-label">🚨 Sospechosos</div>
                     <div class="metric-value">${suspects}</div>
                 </div>
                 <div class="metric">
@@ -850,7 +850,7 @@ const UI = (function() {
                     <div class="metric-value" style="font-size:22px;">${fmtDur(totalStopTimeSecs)}</div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Paradas RÃ¡pidas</div>
+                    <div class="metric-label">Paradas Rápidas</div>
                     <div class="metric-value" style="font-size:22px;">${totalQuickStops}</div>
                 </div>
                 <div class="metric">
@@ -860,13 +860,13 @@ const UI = (function() {
             </div>
             `);
 
-            // â”€â”€ TABLA DE VEHÃCULOS â”€â”€
+            // ── TABLA DE VEHÍCULOS ──
             html.push(`
             <div class="table-card">
                 <div class="table-toolbar">
-                <span class="table-title">AnÃ¡lisis de Flota</span>
+                <span class="table-title">Análisis de Flota</span>
                 <div class="table-controls">
-                    <input class="search" id="searchInput" placeholder="Buscar matrÃ­culaâ€¦" onkeyup="
+                    <input class="search" id="searchInput" placeholder="Buscar matrícula…" onkeyup="
                         const q = this.value.toLowerCase();
                         document.querySelectorAll('.vehicle-row').forEach(row => {
                             const text = row.textContent.toLowerCase();
@@ -880,7 +880,7 @@ const UI = (function() {
                 <div class="table-wrap">
                 <table>
                 <thead><tr>
-                    <th>VehÃ­culo</th>
+                    <th>Vehículo</th>
                     <th>Trips</th>
                     <th>Cobertura</th>
                     <th>Paradas Totales</th>
@@ -925,17 +925,17 @@ const UI = (function() {
                     <td>
                         <span class="pill pill-${vRiskClass}">${v.avgRisk.toFixed(0)}% Riesgo</span>
                     </td>
-                    <td style="color:var(--ink-light);font-size:12px;">â–¼ ver viajes</td>
+                    <td style="color:var(--ink-light);font-size:12px;">▼ ver viajes</td>
                 </tr>
                 `);
 
-                // â”€â”€ DETALLE DEL VIAJE CON ÃNDICE DE CONFIANZA â”€â”€
+                // ── DETALLE DEL VIAJE CON ÍNDICE DE CONFIANZA ──
                 html.push(`<tr><td colspan="6" style="padding:0;">`);
                 html.push(`<div class="expand-section" id="exp-${vi}">`);
                 html.push(`<div class="trips-sub">`);
                 
                 if (detailTrips.length === 0) {
-                    html.push(`<p style="font-size:12px;color:var(--ok);">âœ“ No hay viajes que mostrar con el filtro actual.</p>`);
+                    html.push(`<p style="font-size:12px;color:var(--ok);">✓ No hay viajes que mostrar con el filtro actual.</p>`);
                 } else {
                     html.push(`<div class="trip-list">`);
                     detailTrips.forEach(t => {
@@ -950,7 +950,7 @@ const UI = (function() {
                                 <div style="display:flex; gap: 15px; align-items:center;">
                                     <span class="badge badge-${adt.levelClass}" style="padding:4px 8px; border-radius:4px; color:white; background:var(--riesgo-${adt.levelClass}); font-weight:bold; font-size:11px;">Riesgo ${adt.confidence}%</span>
                                     <span class="trip-date">${fmtDate(t.gStart)}</span>
-                                    <span class="trip-time">${fmtTime(t.gStart)} â€“ ${fmtTime(t.gStop)}</span>
+                                    <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
                                     <span class="trip-dist">${t.gDist} km</span>
                                     <span class="trip-dur">${t.gDur} min</span>
                                     <span style="font-size:11px; color:var(--ink-mid);">Paradas: <strong>${t._stopAnalysis.quickStops}</strong> (${fmtDur(t._stopAnalysis.totalStopTime)})</span>
@@ -972,7 +972,7 @@ const UI = (function() {
 
             html.push(`</tbody></table></div>`);
             html.push(`<div class="table-footer">
-                <span>${vehicles.length} vehÃ­culos analizadost</span>
+                <span>${vehicles.length} vehículos analizadost</span>
             </div>`);
             html.push(`</div>`);
 
@@ -980,15 +980,15 @@ const UI = (function() {
             document.getElementById('btnExport').style.display = 'inline-flex';
         },
 
-        // â”€â”€ EXPORT EXCEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── EXPORT EXCEL ─────────────────────────────────────────
         exportExcel: function(csvData) {
             if (!currentTrips || currentTrips.length === 0) return;
             const unmatched = currentTrips.filter(r => !r.matched);
-            const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÃTICO');
+            const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO');
             
             // Excel rows
             const rows = [
-                ['MatrÃ­cula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'DuraciÃ³n (min)', 'Distancia (km)', 'Riesgo %', 'Nivel', 'Paradas', 'Tiempo Paradas (s)', 'Enlace Mapa'],
+                ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Riesgo %', 'Nivel', 'Paradas', 'Tiempo Paradas (s)', 'Enlace Mapa'],
                 ...suspects.map(r => [
                     r.plateOrig, r.deviceName, r.geotabDriverName,
                     fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
@@ -1017,7 +1017,7 @@ if (typeof geotab === 'undefined') {
     window.geotab = { addin: {} };
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('resultsArea').innerHTML =
-            '<div class="state"><p>Modo standalone â€” conecta a Geotab para datos reales.</p></div>';
+            '<div class="state"><p>Modo standalone — conecta a Geotab para datos reales.</p></div>';
     });
 }
 
@@ -1069,7 +1069,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             try {
                 const stats = DataManager.parseCSV(e.target.result, file.name);
                 document.getElementById('uploadLabel').innerHTML = 
-                    `<strong style="color:var(--ok);">âœ“ ${file.name}</strong> â€” ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
+                    `<strong style="color:var(--ok);">✓ ${file.name}</strong> — ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
                 
                 // Actualizar dropdown de filtro
                 const sel = document.getElementById('filterVehicle');
@@ -1090,7 +1090,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
     }
 
     async function runAudit() {
-        UI.showLoading("Obteniendo vehÃ­culos y usuarios...");
+        UI.showLoading("Obteniendo vehículos y usuarios...");
         
         try {
             const users = await DataManager.getUsers();
@@ -1102,7 +1102,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 .filter(Boolean);
 
             if (targetDevices.length === 0) {
-                UI.showError("No se encontraron vehÃ­culos en Geotab que coincidan con las matrÃ­culas del CSV.");
+                UI.showError("No se encontraron vehículos en Geotab que coincidan con las matrículas del CSV.");
                 return;
             }
 
@@ -1115,7 +1115,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             let allTrips = [];
             for (let i=0; i<targetDevices.length; i++) {
                 const dev = targetDevices[i];
-                UI.updateLoading(`Descargando viajes... vehÃ­culo ${i+1}/${targetDevices.length}: ${dev.name}`);
+                UI.updateLoading(`Descargando viajes... vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
                 try {
                     const trips = await DataManager.getTrips(dev.id, fromDate, toDate);
                     trips.forEach(t => t._device = dev);
@@ -1131,7 +1131,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
 
             // 2. Motor de Paradas
             if (RuleManager.hasParadaRapidaRule()) {
-                UI.updateLoading("Descargando eventos de paradas rÃ¡pidas de Geotab...");
+                UI.updateLoading("Descargando eventos de paradas rápidas de Geotab...");
                 const ruleId = RuleManager.getParadaRapidaId();
                 let allEvents = [];
                 try {
@@ -1143,11 +1143,11 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 UI.updateLoading("Calculando duraciones reales de las paradas...");
                 StopAnalyzer.analyzeTrips(geotabFiltered, allEvents);
             } else {
-                console.warn("No se analizan paradas porque no se encontrÃ³ la regla");
+                console.warn("No se analizan paradas porque no se encontró la regla");
                 geotabFiltered.forEach(t => t._stopAnalysis = { quickStops:0, totalStopTime:0, maxStop:0, stopLocations:[]});
             }
 
-            UI.updateLoading("Cruzando datos y calculando Ãndice de Confianza...");
+            UI.updateLoading("Cruzando datos y calculando Índice de Confianza...");
             
             // 3. Cruce con CSV y Motor de Riesgo
             const tolMs = tolerance * 60 * 1000;
@@ -1163,7 +1163,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     driverName = users[t.driver.id] || t.driver.id;
                 }
 
-                // Cruce (Misma lÃ³gica V2 validada)
+                // Cruce (Misma lógica V2 validada)
                 const match = csvData.trips.find(c => {
                     if (c.plate !== plate) return false;
                     const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
@@ -1198,7 +1198,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
 
         } catch (err) {
             console.error(err);
-            UI.showError("Error durante la auditorÃ­a: " + err.message);
+            UI.showError("Error durante la auditoría: " + err.message);
         }
     }
 };
@@ -1208,4 +1208,3 @@ geotab.addin.blunvtcauditoria = function(api, state) {
 </script>
 </body>
 </html>
-
