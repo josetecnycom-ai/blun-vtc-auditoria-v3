@@ -632,7 +632,7 @@ const RiskEngine = (function() {
             let reasons = [];
 
             const isMatched = trip.matched;
-            const gDist = (trip.distance || 0) / 1000;
+            const gDist = (trip.distance || 0);
             const stops = trip._stopAnalysis || { quickStops: 0, stopLocations: [] };
             
             // 1. Base: No registrado en APP
@@ -1126,7 +1126,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             }
 
             const geotabFiltered = allTrips.filter(t => {
-                return ((t.distance || 0) / 1000) >= minDist;
+                return (t.distance || 0) >= minDist;
             });
 
             // 2. Motor de Paradas
