@@ -1054,14 +1054,19 @@ let _globalState = null;
 let _serverStr = 'my.geotab.com';
 let _databaseStr = '';
 
-// Función global para navegar al mapa — igual que en V2 validada
+// Función global para navegar al mapa — usa gotoPage del SDK de Geotab
 function navigateToTrip(event, deviceId, fromDate, toDate) {
     if (event) event.preventDefault();
-    const stateStr = `tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
-    if (_globalState && typeof _globalState.setState === 'function') {
-        _globalState.setState(stateStr);
+    if (_globalState && typeof _globalState.gotoPage === 'function') {
+        // Método correcto del SDK de MyGeotab para navegar a otra página
+        _globalState.gotoPage('tripsHistory', {
+            device: { id: deviceId },
+            fromDate: fromDate,
+            toDate: toDate
+        });
     } else {
-        const url = `https://${_serverStr}/${_databaseStr}/#${stateStr}`;
+        // Fallback para modo standalone (sin MyGeotab)
+        const url = `https://${_serverStr}/${_databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
         window.open(url, '_blank');
     }
 }
