@@ -633,7 +633,7 @@ const RiskEngine = (function() {
             let reasons = [];
 
             const isMatched = trip.matched;
-            const gDist = trip.gDist || 0; // Ya viene en km
+            const gDist = trip.gDist || 0; // ya en km (calculado en main.js)
             const stops = trip._stopAnalysis || { quickStops: 0, totalStopTime: 0, stopLocations: [] };
 
             // ── 1. BASE: No registrado en APP ───────────────────────────────────
@@ -1193,8 +1193,9 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 }
             }
 
+            // t.distance ya viene en km desde la API de Geotab
             const geotabFiltered = allTrips.filter(t => {
-                return ((t.distance || 0) / 1000) >= minDist;
+                return (t.distance || 0) >= minDist;
             });
 
             // 2. Motor de Paradas
@@ -1225,7 +1226,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 const plate = dev._matchedCsvPlate;
                 const gStart = new Date(t.start || t.startTime);
                 const gStop = new Date(t.stop || t.stopTime);
-                const gDist = (t.distance || 0) / 1000;
+                const gDist = t.distance || 0; // ya en km
 
                 let driverName = "Sin conductor";
                 if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId" && t.driver.id !== "NoDriverId") {
