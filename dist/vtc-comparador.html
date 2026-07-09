@@ -1054,25 +1054,13 @@ let _globalState = null;
 let _serverStr = 'my.geotab.com';
 let _databaseStr = '';
 
-// Función global para navegar al mapa — usa gotoPage del SDK de Geotab
+// Función global para navegar al mapa — idéntico al fallback de V2 que funciona
 function navigateToTrip(event, deviceId, fromDate, toDate) {
     if (event) event.preventDefault();
-    if (_globalState && typeof _globalState.gotoPage === 'function') {
-        // Método correcto del SDK de MyGeotab para navegar a otra página.
-        _globalState.gotoPage('tripsHistory', {
-            device: { id: deviceId },
-            devices: [{ id: deviceId }], // A veces Geotab requiere array
-            view: 'trips',               // Forzar la vista de viajes en lugar de la vista de vehículos (assets)
-            dateRange: {
-                startDate: fromDate,
-                endDate: toDate
-            }
-        });
-    } else {
-        // Fallback para modo standalone (sin MyGeotab)
-        const url = `https://${_serverStr}/${_databaseStr}/#tripsHistory,device:(id:${deviceId}),dateRange:(startDate:'${fromDate}',endDate:'${toDate}')`;
-        window.open(url, '_blank');
-    }
+    // Abrimos el viaje en una pestaña nueva.
+    // Al abrir de cero, MyGeotab parsea fromDate y toDate perfectamente sin que el dateRange 'Hoy' por defecto lo sobreescriba.
+    const url = `https://${_serverStr}/${_databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
+    window.open(url, '_blank');
 }
 
 // Registro del addin con el key definido en el JSON
