@@ -1058,15 +1058,18 @@ let _databaseStr = '';
 function navigateToTrip(event, deviceId, fromDate, toDate) {
     if (event) event.preventDefault();
     if (_globalState && typeof _globalState.gotoPage === 'function') {
-        // Método correcto del SDK de MyGeotab para navegar a otra página
+        // Método correcto del SDK de MyGeotab para navegar a otra página.
+        // La página tripsHistory utiliza la propiedad dateRange para fijar las fechas.
         _globalState.gotoPage('tripsHistory', {
             device: { id: deviceId },
-            fromDate: fromDate,
-            toDate: toDate
+            dateRange: {
+                startDate: fromDate,
+                endDate: toDate
+            }
         });
     } else {
         // Fallback para modo standalone (sin MyGeotab)
-        const url = `https://${_serverStr}/${_databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
+        const url = `https://${_serverStr}/${_databaseStr}/#tripsHistory,device:(id:${deviceId}),dateRange:(startDate:'${fromDate}',endDate:'${toDate}')`;
         window.open(url, '_blank');
     }
 }
