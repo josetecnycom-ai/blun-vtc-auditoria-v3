@@ -268,7 +268,17 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 <div class="main">
 
   <!-- UPLOAD -->
-  <div class="upload-zone" id="dropZone">
+  <div class="settings-bar" style="border-bottom:none; padding-bottom:0; justify-content:flex-start;">
+    <div class="setting-group" style="width:100%;">
+      <label>Plataforma de origen (CSV)</label>
+      <select id="appType" style="width: 200px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; background: white; font-family: inherit;">
+        <option value="uber">Uber</option>
+        <option value="bolt">Bolt</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="dropZone" style="margin-top:0;">
     <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
     <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
     <input type="file" id="fileInput" accept=".csv" />
@@ -360,12 +370,92 @@ const DataManager = (function() {
         });
     }
 
+    // ── PARSERS ESPECÍFICOS POR APP ──────────────────────────
+    function parseUberCSV(lines, idx) {
+        const trips = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(';');
+            const estado = (cols[idx['Estado del viaje']] || '').trim();
+            if (estado !== 'completed') continue;
+
+            const plate = normPlate(cols[idx['Matrícula']]);
+            const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
+            const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
+            if (!plate || !reqStr || !arrStr) continue;
+
+            trips.push({
+                uuid: cols[idx['UUID del viaje']],
+                conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
+                plate: plate,
+                plateRaw: cols[idx['Matrícula']],
+                reqTime: parseDate(reqStr),
+                arrTime: parseDate(arrStr),
+                origin:  cols[idx['Dirección de recogida']] || '',
+                dest:    cols[idx['Dirección de destino']] || '',
+                dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
+                product: cols[idx['Tipo de producto']] || '',
+                payment: cols[idx['Tipo de pago']] || '',
+                status: estado,
+                appType: 'uber'
+            });
+        }
+        return trips;
+    }
+
+    function parseBoltCSV(lines, idx) {
+        const trips = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(';');
+            const estado = (cols[idx['Estado']] || '').trim();
+            
+            // Requerimiento: Analizar "Terminado" y "Cancelación del conductor"
+            if (estado !== 'Terminado' && estado !== 'Cancelación del conductor') continue;
+
+            const plate = normPlate(cols[idx['Matrícula']]);
+            const reqStr = (cols[idx['Fecha']] || '').trim(); 
+            const arrStr = (cols[idx['Tarifa finalizada']] || '').trim(); 
+
+            if (!plate || !reqStr) continue;
+
+            let reqTimeParsed = parseDate(reqStr);
+            let arrTimeParsed = parseDate(arrStr);
+            if (!reqTimeParsed) continue;
+            
+            // Si no hay hora de llegada (por cancelación), estimamos una ventana de 30 mins
+            // para que el motor de riesgo pueda buscar viajes de Geotab en esa franja.
+            if (!arrTimeParsed) {
+                arrTimeParsed = new Date(reqTimeParsed.getTime() + 30 * 60000);
+            }
+
+            let ruta = cols[idx['Ruta']] || '';
+            let origin = ruta.split('→')[0] ? ruta.split('→')[0].trim() : '';
+            let dest = ruta.split('→')[1] ? ruta.split('→')[1].trim() : '';
+
+            trips.push({
+                uuid: cols[idx['Identificador individual']],
+                conductor: cols[idx['Conductor']] || '',
+                plate: plate,
+                plateRaw: cols[idx['Matrícula']],
+                reqTime: reqTimeParsed,
+                arrTime: arrTimeParsed,
+                origin:  origin,
+                dest:    dest,
+                dist:    parseFloat((cols[idx['Distancia|km']] || '0').replace(',','.')),
+                product: cols[idx['Categoría']] || '',
+                payment: cols[idx['Forma de pago']] || '', // "Efectivo" o "En app"
+                status: estado,
+                appType: 'bolt'
+            });
+        }
+        return trips;
+    }
+
     return {
         init: function(geotabApi) {
             api = geotabApi;
         },
 
-        // ── CACHÉ INTELIGENTE ────────────────────────────────────
+        // ... (caché methods keep as is) ...
         getUsers: async function() {
             if (cache.users) return cache.users;
             const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
@@ -398,7 +488,6 @@ const DataManager = (function() {
             return cache.rules;
         },
 
-        // ── LLAMADAS DIRECTAS (Sin Caché Global) ─────────────────
         getTrips: async function(deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'Trip',
@@ -424,7 +513,7 @@ const DataManager = (function() {
         },
 
         // ── GESTIÓN DE CSV ───────────────────────────────────────
-        parseCSV: function(text, filename) {
+        parseCSV: function(text, filename, appType = 'uber') {
             text = text.replace(/^\uFEFF/, '');
             const lines = text.split(/\r?\n/).filter(l => l.trim());
             if (lines.length < 2) throw new Error("CSV vacío o sin datos válidos");
@@ -433,33 +522,16 @@ const DataManager = (function() {
             const idx = {};
             header.forEach((h, i) => { idx[h.trim()] = i; });
 
-            const trips = [];
-            for (let i = 1; i < lines.length; i++) {
-                const cols = lines[i].split(';');
-                const estado = (cols[idx['Estado del viaje']] || '').trim();
-                if (estado !== 'completed') continue;
-
-                const plate = normPlate(cols[idx['Matrícula']]);
-                const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
-                const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
-                if (!plate || !reqStr || !arrStr) continue;
-
-                trips.push({
-                    uuid: cols[idx['UUID del viaje']],
-                    conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
-                    plate: plate,
-                    plateRaw: cols[idx['Matrícula']],
-                    reqTime: parseDate(reqStr),
-                    arrTime: parseDate(arrStr),
-                    origin:  cols[idx['Dirección de recogida']] || '',
-                    dest:    cols[idx['Dirección de destino']] || '',
-                    dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
-                    product: cols[idx['Tipo de producto']] || '',
-                    payment: cols[idx['Tipo de pago']] || '',
-                });
+            let trips = [];
+            if (appType === 'uber') {
+                trips = parseUberCSV(lines, idx);
+            } else if (appType === 'bolt') {
+                trips = parseBoltCSV(lines, idx);
+            } else {
+                throw new Error("Aplicación no soportada: " + appType);
             }
 
-            if (trips.length === 0) throw new Error("No se encontraron viajes 'completed' válidos en el CSV.");
+            if (trips.length === 0) throw new Error(`No se encontraron viajes válidos para la APP ${appType} en el CSV.`);
 
             const allDates = trips.map(t => t.reqTime).filter(Boolean);
             const minDate = new Date(Math.min(...allDates));
@@ -640,6 +712,27 @@ const RiskEngine = (function() {
             if (!isMatched) {
                 score += 50;
                 reasons.push("Viaje no registrado en la APP (+50)");
+            } else if (trip._matchedCsvTrips && trip._matchedCsvTrips.length > 0) {
+                // ── 1.5. VIAJES CANCELADOS POR CONDUCTOR PERO REALIZADOS ──
+                let canceladoEfectivo = false;
+                let canceladoApp = false;
+                trip._matchedCsvTrips.forEach(c => {
+                    if (c.status === 'Cancelación del conductor') {
+                        if (c.payment && c.payment.toLowerCase() === 'efectivo') {
+                            canceladoEfectivo = true;
+                        } else {
+                            canceladoApp = true;
+                        }
+                    }
+                });
+
+                if (canceladoEfectivo) {
+                    score += 100;
+                    reasons.push("🚨 ALERTA GRAVE: Viaje CANCELADO por conductor (EFECTIVO) pero realizado en Geotab (+100)");
+                } else if (canceladoApp) {
+                    score += 60;
+                    reasons.push("🚨 ALERTA: Viaje CANCELADO por conductor pero realizado en Geotab (+60)");
+                }
             }
 
             // ── 2. CANTIDAD DE PARADAS RÁPIDAS (evaluación conjunta, no acumulada) ──
@@ -1134,7 +1227,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const stats = DataManager.parseCSV(e.target.result, file.name);
+                const appType = document.getElementById('appType').value;
+                const stats = DataManager.parseCSV(e.target.result, file.name, appType);
                 document.getElementById('uploadLabel').innerHTML = 
                     `<strong style="color:var(--ok);">✓ ${file.name}</strong> — ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
                 
@@ -1266,7 +1360,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     matched: matchedCSVTrips.length > 0,
                     csvCount: matchedCSVTrips.length,
                     csvDist: csvDist !== null ? +csvDist.toFixed(2) : null,
-                    _stopAnalysis: t._stopAnalysis
+                    _stopAnalysis: t._stopAnalysis,
+                    _matchedCsvTrips: matchedCSVTrips
                 };
 
                 // Motor de Riesgo
