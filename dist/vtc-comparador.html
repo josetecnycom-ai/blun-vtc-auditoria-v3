@@ -703,9 +703,10 @@ const RiskEngine = (function() {
         evaluateTrip: function(trip) {
             let score = 0;
             let reasons = [];
+            let fraudAlert = null;
 
             const isMatched = trip.matched;
-            const gDist = trip.gDist || 0; // ya en km (calculado en main.js)
+            const gDist = trip.gDist || 0; 
             const stops = trip._stopAnalysis || { quickStops: 0, totalStopTime: 0, stopLocations: [] };
 
             // ── 1. BASE: No registrado en APP ───────────────────────────────────
@@ -728,10 +729,12 @@ const RiskEngine = (function() {
 
                 if (canceladoEfectivo) {
                     score += 100;
-                    reasons.push("🚨 ALERTA GRAVE: Viaje CANCELADO por conductor (EFECTIVO) pero realizado en Geotab (+100)");
+                    fraudAlert = "FRAUDE GRAVE: Cancelado en APP (Cobro Efectivo)";
+                    reasons.push(`🚨 ${fraudAlert} (+100)`);
                 } else if (canceladoApp) {
                     score += 60;
-                    reasons.push("🚨 ALERTA: Viaje CANCELADO por conductor pero realizado en Geotab (+60)");
+                    fraudAlert = "ALERTA: Cancelado en APP pero realizado físicamente";
+                    reasons.push(`🚨 ${fraudAlert} (+60)`);
                 }
             }
 
@@ -809,6 +812,7 @@ const RiskEngine = (function() {
                 level: level,
                 confidence: score, // Puntuación total visible
                 reasons: reasons,
+                fraudAlert: fraudAlert,
                 levelClass: level === 'CRÍTICO' ? 'critico'
                           : level === 'ALTO'    ? 'alto'
                           : level === 'MEDIO'   ? 'medio'
@@ -1039,10 +1043,15 @@ const UI = (function() {
                         const fromIso = t.gStart.toISOString();
                         const toIso   = t.gStop.toISOString();
 
-                        // Badge de coincidencia
-                        const matchBadge = t.matched
-                            ? `<span class="pill pill-ok">Registrado en APP (${t.csvCount} viaje${t.csvCount > 1 ? 's' : ''})</span>`
-                            : `<span class="pill pill-danger">Sin registrar en APP</span>`;
+                        // Badge de coincidencia o ALERTA DE FRAUDE
+                        let matchBadge = '';
+                        if (adt.fraudAlert) {
+                            matchBadge = `<span class="pill" style="background:var(--danger);color:white;font-weight:bold;">🚨 ${adt.fraudAlert}</span>`;
+                        } else {
+                            matchBadge = t.matched
+                                ? `<span class="pill pill-ok">Registrado en APP (${t.csvCount} viaje${t.csvCount > 1 ? 's' : ''})</span>`
+                                : `<span class="pill pill-danger">Sin registrar en APP</span>`;
+                        }
 
                         // Motivos condensados (max 5 líneas)
                         const reasonsHtml = adt.reasons.map(r => `<li>${r}</li>`).join('');
@@ -1105,12 +1114,12 @@ const UI = (function() {
             const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO');
 
             const rows = [
-                ['Matrícula', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Registrado APP', 'Puntuación Riesgo', 'Nivel Riesgo', 'Paradas Rápidas', 'Tiempo Total Paradas', 'Motivos'],
+                ['Matrícula', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Estado APP / Alertas', 'Puntuación Riesgo', 'Nivel Riesgo', 'Paradas Rápidas', 'Tiempo Total Paradas', 'Motivos'],
                 ...suspects.map(r => [
                     r.plateOrig, r.geotabDriverName,
                     fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
                     r.gDur, r.gDist,
-                    r.matched ? 'Sí' : 'No',
+                    r.audit.fraudAlert ? r.audit.fraudAlert : (r.matched ? 'Sí' : 'No'),
                     r.audit.score, r.audit.level,
                     r._stopAnalysis.quickStops,
                     fmtDur(r._stopAnalysis.totalStopTime),
