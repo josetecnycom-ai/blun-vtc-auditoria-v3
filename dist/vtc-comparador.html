@@ -269,20 +269,10 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
 <div class="main">
 
   <!-- UPLOAD -->
-  <div class="settings-bar" style="border-bottom:none; padding-bottom:0; justify-content:flex-start;">
-    <div class="setting-group" style="width:100%;">
-      <label>Plataforma de origen (CSV)</label>
-      <select id="appType" style="width: 200px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; background: white; font-family: inherit;">
-        <option value="uber">Uber</option>
-        <option value="bolt">Bolt</option>
-      </select>
-    </div>
-  </div>
-
   <div class="upload-zone" id="dropZone" style="margin-top:0;">
     <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
-    <input type="file" id="fileInput" accept=".csv" />
+    <p id="uploadLabel">Arrastra los CSV (Uber, Bolt...) aquí o <strong>haz clic para seleccionar múltiples</strong></p>
+    <input type="file" id="fileInput" accept=".csv" multiple />
   </div>
 
   <!-- SETTINGS -->
@@ -513,40 +503,63 @@ const DataManager = (function() {
             });
         },
 
-        // ── GESTIÓN DE CSV ───────────────────────────────────────
-        parseCSV: function(text, filename, appType = 'uber') {
-            text = text.replace(/^\uFEFF/, '');
-            const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) throw new Error("CSV vacío o sin datos válidos");
+        // ── GESTIÓN DE CSV MÚLTIPLES Y AUTO-DETECCIÓN ────────────────────────
+        parseMultipleCSVs: function(filesData) {
+            if (!filesData || filesData.length === 0) throw new Error("No hay archivos para procesar.");
+            
+            let allTrips = [];
+            
+            filesData.forEach(file => {
+                let text = file.text.replace(/^\uFEFF/, '');
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (lines.length < 2) {
+                    console.warn(`El archivo ${file.name} está vacío o no es válido.`);
+                    return;
+                }
 
-            const header = lines[0].split(';');
-            const idx = {};
-            header.forEach((h, i) => { idx[h.trim()] = i; });
+                // Auto-detección por cabeceras
+                const headerLine = lines[0];
+                const header = headerLine.split(';');
+                const idx = {};
+                header.forEach((h, i) => { idx[h.trim()] = i; });
 
-            let trips = [];
-            if (appType === 'uber') {
-                trips = parseUberCSV(lines, idx);
-            } else if (appType === 'bolt') {
-                trips = parseBoltCSV(lines, idx);
-            } else {
-                throw new Error("Aplicación no soportada: " + appType);
-            }
+                let appType = 'unknown';
+                if (idx['UUID del viaje'] !== undefined || headerLine.includes('UUID del viaje') || headerLine.includes('Estado del viaje')) {
+                    appType = 'uber';
+                } else if (idx['Identificador individual'] !== undefined || headerLine.includes('Identificador individual') || headerLine.includes('Tarifa finalizada')) {
+                    appType = 'bolt';
+                }
 
-            if (trips.length === 0) throw new Error(`No se encontraron viajes válidos para la APP ${appType} en el CSV.`);
+                let trips = [];
+                if (appType === 'uber') {
+                    trips = parseUberCSV(lines, idx);
+                } else if (appType === 'bolt') {
+                    trips = parseBoltCSV(lines, idx);
+                } else {
+                    console.warn(`No se pudo detectar el formato de ${file.name}. Formato no reconocido.`);
+                    return; // Skip este archivo
+                }
+                
+                // Add property appSource to trips if needed later, right now not needed.
+                trips.forEach(t => t.appSource = appType);
+                allTrips = allTrips.concat(trips);
+            });
 
-            const allDates = trips.map(t => t.reqTime).filter(Boolean);
+            if (allTrips.length === 0) throw new Error("No se encontraron viajes válidos en los archivos cargados.");
+
+            const allDates = allTrips.map(t => t.reqTime).filter(Boolean);
             const minDate = new Date(Math.min(...allDates));
             const maxDate = new Date(Math.max(...allDates));
             minDate.setHours(0,0,0,0);
             maxDate.setHours(23,59,59,999);
 
-            csvData.trips = trips;
-            csvData.plates = new Set(trips.map(t => t.plate));
+            csvData.trips = allTrips;
+            csvData.plates = new Set(allTrips.map(t => t.plate));
             csvData.minDate = minDate.toISOString();
             csvData.maxDate = maxDate.toISOString();
 
             return {
-                tripsCount: trips.length,
+                tripsCount: allTrips.length,
                 platesCount: csvData.plates.size,
                 minDate: minDate,
                 maxDate: maxDate
@@ -1305,7 +1318,9 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 dropZone.addEventListener('drop', (e) => {
                     e.preventDefault();
                     dropZone.classList.remove('drag');
-                    if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        processFiles(e.dataTransfer.files);
+                    }
                 });
                 dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
             }
@@ -1327,34 +1342,44 @@ geotab.addin.blunvtcauditoria = function(api, state) {
     };
 
     function handleFileSelect(e) {
-        if (e.target.files[0]) processFile(e.target.files[0]);
+        if (e.target.files && e.target.files.length > 0) {
+            processFiles(e.target.files);
+        }
     }
 
-    function processFile(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const appType = document.getElementById('appType').value;
-                const stats = DataManager.parseCSV(e.target.result, file.name, appType);
-                document.getElementById('uploadLabel').innerHTML = 
-                    `<strong style="color:var(--ok);">✓ ${file.name}</strong> — ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
-                
-                // Actualizar dropdown de filtro
-                const sel = document.getElementById('filterVehicle');
-                sel.innerHTML = '<option value="all">Todos</option>';
-                const plates = Array.from(DataManager.getCsvData().plates).sort();
-                plates.forEach(p => {
-                    const o = document.createElement('option');
-                    o.value = p; o.textContent = p;
-                    sel.appendChild(o);
+    async function processFiles(fileList) {
+        const files = Array.from(fileList);
+        try {
+            const fileDataPromises = files.map(file => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve({ name: file.name, text: e.target.result });
+                    reader.onerror = () => reject(new Error(`Error leyendo ${file.name}`));
+                    reader.readAsText(file, 'utf-8');
                 });
+            });
 
-                document.getElementById('btnRun').disabled = false;
-            } catch (err) {
-                alert("Error al parsear el CSV: " + err.message);
-            }
-        };
-        reader.readAsText(file, 'utf-8');
+            const filesData = await Promise.all(fileDataPromises);
+            const stats = DataManager.parseMultipleCSVs(filesData);
+
+            const filesStr = files.length === 1 ? files[0].name : `${files.length} archivos combinados`;
+            document.getElementById('uploadLabel').innerHTML = 
+                `<strong style="color:var(--ok);">✓ ${filesStr}</strong> — ${stats.tripsCount.toLocaleString('es')} viajes cargados`;
+            
+            // Actualizar dropdown de filtro
+            const sel = document.getElementById('filterVehicle');
+            sel.innerHTML = '<option value="all">Todos</option>';
+            const plates = Array.from(DataManager.getCsvData().plates).sort();
+            plates.forEach(p => {
+                const o = document.createElement('option');
+                o.value = p; o.textContent = p;
+                sel.appendChild(o);
+            });
+
+            document.getElementById('btnRun').disabled = false;
+        } catch (err) {
+            alert("Error al procesar archivos: " + err.message);
+        }
     }
 
     async function runAudit() {
