@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Auditoría de Viajes VTC v3.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 <style>
@@ -832,6 +833,7 @@ const UI = (function() {
 
     let currentTrips = [];
     let _targetDevices = [];
+    let _chartInstances = []; // To store Chart.js instances for cleanup
 
     // ── FORMATTERS ─────────────────────────────────────────────────
     function fmtDate(d) {
@@ -958,6 +960,24 @@ const UI = (function() {
                 <div class="metric">
                     <div class="metric-label">Riesgo Medio</div>
                     <div class="metric-value" style="font-size:22px;">${avgRiskScore.toFixed(0)} pts</div>
+                </div>
+            </div>
+            `);
+
+            // ── CHARTS ──
+            html.push(`
+            <div class="charts-container" style="display:flex; gap:20px; margin: 20px 0; flex-wrap:wrap;">
+                <div class="chart-card" style="flex: 1; min-width: 300px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border);">
+                    <h3 style="margin-top:0; margin-bottom:15px; font-size:14px; color:var(--ink);">Cobertura APP vs Geotab</h3>
+                    <div style="position:relative; height:220px; width:100%;">
+                        <canvas id="chartCoverage"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card" style="flex: 2; min-width: 400px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border);">
+                    <h3 style="margin-top:0; margin-bottom:15px; font-size:14px; color:var(--ink);">Top 5 Vehículos con Mayor Riesgo</h3>
+                    <div style="position:relative; height:220px; width:100%;">
+                        <canvas id="chartRisk"></canvas>
+                    </div>
                 </div>
             </div>
             `);
@@ -1106,6 +1126,9 @@ const UI = (function() {
 
             document.getElementById('resultsArea').innerHTML = html.join('');
             document.getElementById('btnExport').style.display = 'inline-flex';
+            
+            // Iniciar gráficos
+            initCharts(totalMatched, totalUnmatched, vehicles);
         },
 
         // ── EXPORT EXCEL ─────────────────────────────────────────
@@ -1136,6 +1159,81 @@ const UI = (function() {
             XLSX.writeFile(wb, `auditoria_vtc_${today}.xlsx`);
         }
     };
+
+    // ── CHARTS JS INIT ───────────────────────────────────────
+    function initCharts(matched, unmatched, vehicles) {
+        if (_chartInstances && _chartInstances.length > 0) {
+            _chartInstances.forEach(c => c.destroy());
+            _chartInstances = [];
+        }
+
+        if (typeof Chart === 'undefined') {
+            console.warn("Chart.js no está disponible.");
+            return;
+        }
+
+        // 1. Chart Coverage (Donut)
+        const ctxCov = document.getElementById('chartCoverage');
+        if (ctxCov) {
+            const chartCov = new Chart(ctxCov, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Registrados', 'No Registrados'],
+                    datasets: [{
+                        data: [matched, unmatched],
+                        backgroundColor: ['#16a34a', '#dc2626'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } }
+                    },
+                    cutout: '70%'
+                }
+            });
+            _chartInstances.push(chartCov);
+        }
+
+        // 2. Chart Risk (Bar)
+        const top5 = vehicles.slice(0, 5);
+        const ctxRisk = document.getElementById('chartRisk');
+        if (ctxRisk && top5.length > 0) {
+            const chartRisk = new Chart(ctxRisk, {
+                type: 'bar',
+                data: {
+                    labels: top5.map(v => v.plateOrig),
+                    datasets: [{
+                        label: 'Riesgo Medio (pts)',
+                        data: top5.map(v => v.avgRisk.toFixed(1)),
+                        backgroundColor: top5.map(v => {
+                            if (v.avgRisk > 60) return '#dc2626';
+                            if (v.avgRisk > 40) return '#d97706';
+                            if (v.avgRisk > 20) return '#ca8a04';
+                            return '#16a34a';
+                        }),
+                        borderRadius: 4,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6' }, border: { display: false } },
+                        x: { grid: { display: false }, border: { display: false } }
+                    }
+                }
+            });
+            _chartInstances.push(chartRisk);
+        }
+    }
 })();
 
 
