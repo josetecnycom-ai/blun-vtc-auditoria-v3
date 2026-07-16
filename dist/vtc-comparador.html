@@ -337,7 +337,8 @@ const DataManager = (function() {
         trips: [],
         plates: new Set(),
         minDate: null,
-        maxDate: null
+        maxDate: null,
+        dateRanges: []  // Rangos de fechas individuales por CSV para filtro preciso
     };
 
     // ── NORMALIZAR MATRÍCULA ─────────────────────────────────
@@ -509,6 +510,8 @@ const DataManager = (function() {
             if (!filesData || filesData.length === 0) throw new Error("No hay archivos para procesar.");
             
             let allTrips = [];
+            // Guardamos el rango de fechas de CADA archivo por separado
+            const dateRanges = [];
             
             filesData.forEach(file => {
                 let text = file.text.replace(/^\uFEFF/, '');
@@ -541,7 +544,16 @@ const DataManager = (function() {
                     return; // Skip este archivo
                 }
                 
-                // Add property appSource to trips if needed later, right now not needed.
+                if (trips.length > 0) {
+                    // Calcular y guardar el rango de fechas específico de este archivo
+                    const fileDates = trips.map(t => t.reqTime).filter(Boolean);
+                    const fileMin = new Date(Math.min(...fileDates));
+                    const fileMax = new Date(Math.max(...fileDates));
+                    fileMin.setHours(0, 0, 0, 0);
+                    fileMax.setHours(23, 59, 59, 999);
+                    dateRanges.push({ min: fileMin, max: fileMax });
+                }
+
                 trips.forEach(t => t.appSource = appType);
                 allTrips = allTrips.concat(trips);
             });
@@ -558,6 +570,8 @@ const DataManager = (function() {
             csvData.plates = new Set(allTrips.map(t => t.plate));
             csvData.minDate = minDate.toISOString();
             csvData.maxDate = maxDate.toISOString();
+            // ✔ Guardamos los rangos individuales para filtrar Geotab después
+            csvData.dateRanges = dateRanges;
 
             return {
                 tripsCount: allTrips.length,
@@ -1436,9 +1450,18 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 }
             }
 
-            // t.distance ya viene en km desde la API de Geotab
+            // Filtrar trips de Geotab: solo los que caen en alguno de los rangos cubiertos por CSV
+            // Esto evita analizar periodos intermedios para los que no hay CSV y que generarían falsos "No registrados"
+            const dateRanges = csvData.dateRanges && csvData.dateRanges.length > 0
+                ? csvData.dateRanges
+                : [{ min: new Date(fromDate), max: new Date(toDate) }]; // Compatibilidad con carga individual
+
             const geotabFiltered = allTrips.filter(t => {
-                return (t.distance || 0) >= minDist;
+                if ((t.distance || 0) < minDist) return false;
+                const tStart = new Date(t.start || t.startTime).getTime();
+                const tStop  = new Date(t.stop  || t.stopTime).getTime();
+                // Incluir el trip si su periodo solapa con ALGUNO de los rangos cubiertos por CSV
+                return dateRanges.some(r => tStart <= r.max.getTime() && tStop >= r.min.getTime());
             });
 
             // 2. Motor de Paradas
