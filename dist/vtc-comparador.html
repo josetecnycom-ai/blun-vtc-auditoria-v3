@@ -491,15 +491,16 @@ const DataManager = (function() {
             });
         },
 
-        getExceptionEvents: async function(ruleId, fromDate, toDate) {
+        getExceptionEvents: async function(ruleId, deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'ExceptionEvent',
                 search: {
                     ruleSearch: { id: ruleId },
+                    deviceSearch: { id: deviceId },
                     fromDate: fromDate,
                     toDate: toDate
                 },
-                resultsLimit: 100000
+                resultsLimit: 50000
             });
         },
 
@@ -1413,17 +1414,25 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             const tolerance = parseInt(document.getElementById('tolerance').value) || 5;
             const minDist = parseFloat(document.getElementById('minDist').value) || 0.5;
 
-            // 1. Descargar Viajes
+            // 1. Descargar Viajes y Eventos
             let allTrips = [];
+            let allEvents = [];
+            const ruleId = RuleManager.hasParadaRapidaRule() ? RuleManager.getParadaRapidaId() : null;
+
             for (let i=0; i<targetDevices.length; i++) {
                 const dev = targetDevices[i];
-                UI.updateLoading(`Descargando viajes... vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+                UI.updateLoading(`Descargando datos... vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
                 try {
                     const trips = await DataManager.getTrips(dev.id, fromDate, toDate);
                     trips.forEach(t => t._device = dev);
                     allTrips = allTrips.concat(trips);
+
+                    if (ruleId) {
+                        const devEvents = await DataManager.getExceptionEvents(ruleId, dev.id, fromDate, toDate);
+                        allEvents = allEvents.concat(devEvents);
+                    }
                 } catch(e) {
-                    console.warn("Error descargando viajes del vehiculo", dev.id, e);
+                    console.warn("Error descargando datos del vehiculo", dev.id, e);
                 }
             }
 
@@ -1433,16 +1442,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             });
 
             // 2. Motor de Paradas
-            if (RuleManager.hasParadaRapidaRule()) {
-                UI.updateLoading("Descargando eventos de paradas rápidas de Geotab...");
-                const ruleId = RuleManager.getParadaRapidaId();
-                let allEvents = [];
-                try {
-                    allEvents = await DataManager.getExceptionEvents(ruleId, fromDate, toDate);
-                } catch (e) {
-                    console.error("Error al obtener eventos", e);
-                }
-                
+            if (ruleId) {
                 UI.updateLoading("Calculando duraciones reales de las paradas...");
                 StopAnalyzer.analyzeTrips(geotabFiltered, allEvents);
             } else {
