@@ -6,6 +6,7 @@
 <title>Auditoría de Viajes VTC v3.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 <style>
@@ -245,6 +246,40 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
   font-size:12px;color:var(--ink-light);
 }
 
+/* ── PDF EXPORT MODE ─────────────────────────────────── */
+body.pdf-mode {
+  background: white !important;
+  /* El ancho fijo ayuda a que html2pdf encaje bien en A4 */
+  width: 1024px !important; 
+  margin: 0 auto;
+}
+body.pdf-mode .settings-bar,
+body.pdf-mode .upload-zone,
+body.pdf-mode #btnExport,
+body.pdf-mode #btnExportPDF,
+body.pdf-mode .table-toolbar {
+  display: none !important;
+}
+body.pdf-mode .main {
+  padding: 10px 0;
+}
+body.pdf-mode .metric,
+body.pdf-mode .table-card {
+  box-shadow: none !important;
+  border: 1px solid #ccc !important;
+}
+body.pdf-mode tr.vehicle-row,
+body.pdf-mode .expand-section.open {
+  page-break-inside: avoid;
+}
+body.pdf-mode .header {
+  padding: 0;
+  border-bottom: 2px solid #eee;
+}
+body.pdf-mode .metric-value {
+  font-size: 24px;
+}
+
 </style>
 
 <div id="vtc-app-wrapper">
@@ -262,6 +297,10 @@ tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
     <button class="btn" id="btnExport" style="display:none;">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Exportar Excel
+    </button>
+    <button class="btn" id="btnExportPDF" style="display:none; background-color: var(--danger); color: white; border-color: var(--danger);">
+      <svg viewBox="0 0 24 24" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Generar PDF
     </button>
   </div>
 </div>
@@ -890,7 +929,10 @@ const UI = (function() {
     function showLoading(msg) {
         document.getElementById('resultsArea').innerHTML =
             `<div class="state"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
-        document.getElementById('btnExport').style.display = 'none';
+        const btnExp = document.getElementById('btnExport');
+        const btnPdf = document.getElementById('btnExportPDF');
+        if (btnExp) btnExp.style.display = 'none';
+        if (btnPdf) btnPdf.style.display = 'none';
     }
     function updateLoading(msg) {
         const p = document.querySelector('.progress-msg');
@@ -1156,6 +1198,8 @@ const UI = (function() {
 
             document.getElementById('resultsArea').innerHTML = html.join('');
             document.getElementById('btnExport').style.display = 'inline-flex';
+            const btnPdf = document.getElementById('btnExportPDF');
+            if (btnPdf) btnPdf.style.display = 'inline-flex';
             
             // Iniciar gráficos
             initCharts(totalMatched, totalUnmatched, vehicles);
@@ -1187,6 +1231,43 @@ const UI = (function() {
 
             const today = new Date().toISOString().slice(0,10);
             XLSX.writeFile(wb, `auditoria_vtc_${today}.xlsx`);
+        },
+
+        // ── EXPORT PDF ───────────────────────────────────────────
+        exportPDF: function(csvData) {
+            if (typeof html2pdf === 'undefined') {
+                console.error("La librería html2pdf.js no está cargada.");
+                alert("Error al cargar la librería de exportación a PDF.");
+                return;
+            }
+
+            // Añadir clase para modo impresión (ocultar botones, ajustes CSS)
+            document.body.classList.add('pdf-mode');
+
+            // Abrir todos los desplegables de vehículos para que el PDF incluya el detalle
+            document.querySelectorAll('.expand-section').forEach(el => el.classList.add('open'));
+
+            const element = document.getElementById('vtc-app-wrapper');
+            const today = new Date().toISOString().slice(0,10);
+            
+            const opt = {
+                margin:       10,
+                filename:     `auditoria_vtc_${today}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Quitar clase de impresión
+                document.body.classList.remove('pdf-mode');
+                // Cerrar detalles
+                document.querySelectorAll('.expand-section').forEach(el => el.classList.remove('open'));
+            }).catch(err => {
+                console.error("Error generando PDF", err);
+                document.body.classList.remove('pdf-mode');
+                document.querySelectorAll('.expand-section').forEach(el => el.classList.remove('open'));
+            });
         }
     };
 
@@ -1346,6 +1427,12 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             document.getElementById('btnExport').addEventListener('click', () => {
                 UI.exportExcel(DataManager.getCsvData());
             });
+            const btnPdf = document.getElementById('btnExportPDF');
+            if (btnPdf) {
+                btnPdf.addEventListener('click', () => {
+                    UI.exportPDF(DataManager.getCsvData());
+                });
+            }
 
             // Avisar a Geotab que estamos listos
             callback();
