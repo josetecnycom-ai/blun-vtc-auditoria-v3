@@ -1435,16 +1435,36 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             let allEvents = [];
             const ruleId = RuleManager.hasParadaRapidaRule() ? RuleManager.getParadaRapidaId() : null;
 
+            // Asegurar que tenemos dateRanges
+            const dateRanges = csvData.dateRanges && csvData.dateRanges.length > 0
+                ? csvData.dateRanges
+                : [{ min: new Date(fromDate), max: new Date(toDate), plates: new Set(Array.from(csvData.plates)) }];
+
             for (let i=0; i<targetDevices.length; i++) {
                 const dev = targetDevices[i];
+                const plate = dev._matchedCsvPlate;
+                
+                // Encontrar los rangos de fechas en los que este vehículo específico tiene datos de CSV
+                const validRanges = dateRanges.filter(r => r.plates && r.plates.has(plate));
+                
+                if (validRanges.length === 0) {
+                    console.warn(`El vehículo ${plate} no tiene rangos de fechas válidos, omitiendo descarga.`);
+                    continue; 
+                }
+
+                // Calcular la fecha mínima y máxima absoluta para este vehículo
+                const devMinDate = new Date(Math.min(...validRanges.map(r => r.min.getTime()))).toISOString();
+                const devMaxDate = new Date(Math.max(...validRanges.map(r => r.max.getTime()))).toISOString();
+
                 UI.updateLoading(`Descargando datos... vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
                 try {
-                    const trips = await DataManager.getTrips(dev.id, fromDate, toDate);
+                    // Descargar solo el periodo en el que este vehículo trabajó
+                    const trips = await DataManager.getTrips(dev.id, devMinDate, devMaxDate);
                     trips.forEach(t => t._device = dev);
                     allTrips = allTrips.concat(trips);
 
                     if (ruleId) {
-                        const devEvents = await DataManager.getExceptionEvents(ruleId, dev.id, fromDate, toDate);
+                        const devEvents = await DataManager.getExceptionEvents(ruleId, dev.id, devMinDate, devMaxDate);
                         allEvents = allEvents.concat(devEvents);
                     }
                 } catch(e) {
@@ -1452,18 +1472,14 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 }
             }
 
-            // Filtrar trips de Geotab: solo los que caen en alguno de los rangos cubiertos por CSV *para esa matrícula*
-            // Esto evita analizar periodos intermedios o archivos ajenos para los que no hay CSV de un vehículo concreto
-            const dateRanges = csvData.dateRanges && csvData.dateRanges.length > 0
-                ? csvData.dateRanges
-                : [{ min: new Date(fromDate), max: new Date(toDate), plates: new Set(Array.from(csvData.plates)) }]; // Compatibilidad con carga individual
-
             const geotabFiltered = allTrips.filter(t => {
                 if ((t.distance || 0) < minDist) return false;
                 const tStart = new Date(t.start || t.startTime).getTime();
                 const tStop  = new Date(t.stop  || t.stopTime).getTime();
                 const plate = t._device._matchedCsvPlate;
-                // Incluir el trip si su periodo solapa con ALGUNO de los rangos cubiertos por CSV que contenga esta matrícula
+                
+                // Incluir el trip solo si cae dentro de alguno de los rangos ESPECÍFICOS donde el vehículo tiene CSV
+                // Esto descarta viajes en los huecos (ej. si trabajó en mayo y julio, descarta los viajes de junio)
                 return dateRanges.some(r => r.plates && r.plates.has(plate) && tStart <= r.max.getTime() && tStop >= r.min.getTime());
             });
 
