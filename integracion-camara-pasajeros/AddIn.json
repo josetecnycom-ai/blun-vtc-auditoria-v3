@@ -1,0 +1,14 @@
+{
+  "name": "Auditoría VTC con Cámara",
+  "supportEmail": "soporte@eurosuministros.com",
+  "version": "1.0.0",
+  "isSigned": false,
+  "key": "blunvtccamarafusion",
+  "items": [{
+    "url": "https://josetecnycom-ai.github.io/blun-vtc-auditoria-v3/integracion-camara-pasajeros/dist/vtc-comparador.html",
+    "path": "ActivityLink",
+    "menuName": { "en": "VTC Audit + Passenger Camera", "es": "Auditoría VTC + Cámara" },
+    "icon": "https://josetecnycom-ai.github.io/blun-vtc-auditoria-v3/integracion-camara-pasajeros/dist/vtc-icon.svg"
+  }],
+  "files": {}
+}
