@@ -4,6 +4,8 @@ const PassengerCamera = (function() {
     let api = null;
     let sessionPromise = null;
     let camerasPromise = null;
+    let requestQueue = Promise.resolve();
+    let lastRequestAt = 0;
 
     function normalizeSerial(value) { return String(value || '').trim().toUpperCase(); }
     function getSession() {
@@ -15,16 +17,23 @@ const PassengerCamera = (function() {
     }
     async function rawApiCall(method, params) {
         const session = await getSession();
-        const response = await fetch('https://' + (session.server || 'my.geotab.com') + '/apiv1', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method, params: Object.assign({}, params, {
-                credentials: { database: session.database, userName: session.userName, sessionId: session.sessionId }
-            }) })
+        const request = requestQueue.then(async () => {
+            const waitMs = Math.max(0, 700 - (Date.now() - lastRequestAt));
+            if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+            lastRequestAt = Date.now();
+            const response = await fetch('https://' + (session.server || 'my.geotab.com') + '/apiv1', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method, params: Object.assign({}, params, {
+                    credentials: { database: session.database, userName: session.userName, sessionId: session.sessionId }
+                }) })
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status + ' consultando ' + method);
+            const payload = await response.json();
+            if (payload.error) throw new Error(payload.error.message || JSON.stringify(payload.error));
+            return payload.result;
         });
-        if (!response.ok) throw new Error('HTTP ' + response.status + ' consultando ' + method);
-        const payload = await response.json();
-        if (payload.error) throw new Error(payload.error.message || JSON.stringify(payload.error));
-        return payload.result;
+        requestQueue = request.catch(() => {});
+        return request;
     }
     async function getCameras() {
         if (!camerasPromise) camerasPromise = rawApiCall('Get', { typeName: 'Camera', resultsLimit: 5000 });

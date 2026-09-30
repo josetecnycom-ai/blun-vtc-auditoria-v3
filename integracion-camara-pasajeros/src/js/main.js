@@ -222,12 +222,11 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             }
             if (!requests.length) throw new Error('No hay vehículos con viajes dentro del período seleccionado.');
             UI.updateLoading(`Descargando viajes y paradas en lotes para ${requests.length} vehículos...`);
-            const [vehicleData, cameraResult] = await Promise.all([
-                DataManager.getTripsAndExceptionsBatch(requests, ruleId, 50, (done, total) => {
-                    UI.updateLoading(`Consultas agrupadas: ${done}/${total} vehículos...`);
-                }),
-                PassengerCamera.fetchForDevices(requests.map(request => request.device), fromDate, toDate)
-            ]);
+            const vehicleData = await DataManager.getTripsAndExceptionsBatch(requests, ruleId, 50, (done, total) => {
+                UI.updateLoading('Consultas agrupadas: ' + done + '/' + total + ' vehículos...');
+            });
+            UI.updateLoading('Consultando eventos de cámara respetando la cuota de Geotab...');
+            const cameraResult = await PassengerCamera.fetchForDevices(requests.map(request => request.device), fromDate, toDate);
             const allTrips = [];
             const allEvents = [];
             requests.forEach(request => {
