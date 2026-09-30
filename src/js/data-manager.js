@@ -10,13 +10,15 @@ const DataManager = (function() {
         devices: null,
         rules: null
     };
+    let _cameraCache = null;
 
     // Estado del CSV
     let csvData = {
         trips: [],
         plates: new Set(),
         minDate: null,
-        maxDate: null
+        maxDate: null,
+        dateRanges: []  // Rangos de fechas individuales por CSV para filtro preciso
     };
 
     // ── NORMALIZAR MATRÍCULA ─────────────────────────────────
@@ -40,12 +42,135 @@ const DataManager = (function() {
         });
     }
 
+    // ── LLAMADA RAW POR fetch() — necesaria para la API de vídeo (GVP) ──
+    // CONFIRMADO en pruebas: api.call() del SDK del addin falla con typeName
+    // "CameraEvent"/"Camera" ("An undefined exception has occurred"), pero el
+    // mismo payload por fetch() directo a apiv1 funciona perfectamente. Se usa
+    // SOLO para los typeName de vídeo; Trip/Device/Rule/ExceptionEvent siguen
+    // yendo por callApi (SDK), que ya funciona bien para esos.
+    let _session = null;
+    function getSession() {
+        if (_session) return Promise.resolve(_session);
+        return new Promise((resolve, reject) => {
+            if (!api) return reject(new Error('API no inicializada'));
+            api.getSession(function(session) {
+                _session = session;
+                resolve(session);
+            });
+        });
+    }
+
+    async function rawApiCall(method, params) {
+        const session = await getSession();
+        const host = session.server || 'my.geotab.com';
+        const body = {
+            method: method,
+            params: Object.assign({}, params, {
+                credentials: {
+                    database: session.database,
+                    userName: session.userName,
+                    sessionId: session.sessionId
+                }
+            })
+        };
+        const resp = await fetch('https://' + host + '/apiv1', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (data.error) {
+            throw new Error(data.error.message || JSON.stringify(data.error));
+        }
+        return data.result;
+    }
+
+    // ── PARSERS ESPECÍFICOS POR APP ──────────────────────────
+    function parseUberCSV(lines, idx) {
+        const trips = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(';');
+            const estado = (cols[idx['Estado del viaje']] || '').trim();
+            if (estado !== 'completed') continue;
+
+            const plate = normPlate(cols[idx['Matrícula']]);
+            const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
+            const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
+            if (!plate || !reqStr || !arrStr) continue;
+
+            trips.push({
+                uuid: cols[idx['UUID del viaje']],
+                conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
+                plate: plate,
+                plateRaw: cols[idx['Matrícula']],
+                reqTime: parseDate(reqStr),
+                arrTime: parseDate(arrStr),
+                origin:  cols[idx['Dirección de recogida']] || '',
+                dest:    cols[idx['Dirección de destino']] || '',
+                dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
+                product: cols[idx['Tipo de producto']] || '',
+                payment: cols[idx['Tipo de pago']] || '',
+                status: estado,
+                appType: 'uber'
+            });
+        }
+        return trips;
+    }
+
+    function parseBoltCSV(lines, idx) {
+        const trips = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(';');
+            const estado = (cols[idx['Estado']] || '').trim();
+            
+            // Requerimiento: Analizar "Terminado" y "Cancelación del conductor"
+            if (estado !== 'Terminado' && estado !== 'Cancelación del conductor') continue;
+
+            const plate = normPlate(cols[idx['Matrícula']]);
+            const reqStr = (cols[idx['Fecha']] || '').trim(); 
+            const arrStr = (cols[idx['Tarifa finalizada']] || '').trim(); 
+
+            if (!plate || !reqStr) continue;
+
+            let reqTimeParsed = parseDate(reqStr);
+            let arrTimeParsed = parseDate(arrStr);
+            if (!reqTimeParsed) continue;
+            
+            // Si no hay hora de llegada (por cancelación), estimamos una ventana de 30 mins
+            // para que el motor de riesgo pueda buscar viajes de Geotab en esa franja.
+            if (!arrTimeParsed) {
+                arrTimeParsed = new Date(reqTimeParsed.getTime() + 30 * 60000);
+            }
+
+            let ruta = cols[idx['Ruta']] || '';
+            let origin = ruta.split('→')[0] ? ruta.split('→')[0].trim() : '';
+            let dest = ruta.split('→')[1] ? ruta.split('→')[1].trim() : '';
+
+            trips.push({
+                uuid: cols[idx['Identificador individual']],
+                conductor: cols[idx['Conductor']] || '',
+                plate: plate,
+                plateRaw: cols[idx['Matrícula']],
+                reqTime: reqTimeParsed,
+                arrTime: arrTimeParsed,
+                origin:  origin,
+                dest:    dest,
+                dist:    parseFloat((cols[idx['Distancia|km']] || '0').replace(',','.')),
+                product: cols[idx['Categoría']] || '',
+                payment: cols[idx['Forma de pago']] || '', // "Efectivo" o "En app"
+                status: estado,
+                appType: 'bolt'
+            });
+        }
+        return trips;
+    }
+
     return {
         init: function(geotabApi) {
             api = geotabApi;
         },
 
-        // ── CACHÉ INTELIGENTE ────────────────────────────────────
+        // ... (caché methods keep as is) ...
         getUsers: async function() {
             if (cache.users) return cache.users;
             const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
@@ -78,7 +203,6 @@ const DataManager = (function() {
             return cache.rules;
         },
 
-        // ── LLAMADAS DIRECTAS (Sin Caché Global) ─────────────────
         getTrips: async function(deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'Trip',
@@ -91,69 +215,146 @@ const DataManager = (function() {
             });
         },
 
-        getExceptionEvents: async function(ruleId, fromDate, toDate) {
+        getExceptionEvents: async function(ruleId, deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'ExceptionEvent',
                 search: {
                     ruleSearch: { id: ruleId },
+                    deviceSearch: { id: deviceId },
                     fromDate: fromDate,
                     toDate: toDate
                 },
-                resultsLimit: 100000
+                resultsLimit: 50000
             });
         },
 
-        // ── GESTIÓN DE CSV ───────────────────────────────────────
-        parseCSV: function(text, filename) {
-            text = text.replace(/^\uFEFF/, '');
-            const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) throw new Error("CSV vacío o sin datos válidos");
-
-            const header = lines[0].split(';');
-            const idx = {};
-            header.forEach((h, i) => { idx[h.trim()] = i; });
-
-            const trips = [];
-            for (let i = 1; i < lines.length; i++) {
-                const cols = lines[i].split(';');
-                const estado = (cols[idx['Estado del viaje']] || '').trim();
-                if (estado !== 'completed') continue;
-
-                const plate = normPlate(cols[idx['Matrícula']]);
-                const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
-                const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
-                if (!plate || !reqStr || !arrStr) continue;
-
-                trips.push({
-                    uuid: cols[idx['UUID del viaje']],
-                    conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
-                    plate: plate,
-                    plateRaw: cols[idx['Matrícula']],
-                    reqTime: parseDate(reqStr),
-                    arrTime: parseDate(arrStr),
-                    origin:  cols[idx['Dirección de recogida']] || '',
-                    dest:    cols[idx['Dirección de destino']] || '',
-                    dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
-                    product: cols[idx['Tipo de producto']] || '',
-                    payment: cols[idx['Tipo de pago']] || '',
-                });
+        // ── GEOTAB VIDEO PLATFORM (GVP) ────────────────────────────────────
+        // CONFIRMADO EN PRUEBAS REALES (addin de test aislado, varias iteraciones):
+        // - Van por rawApiCall (fetch directo), NO por callApi (el SDK del addin
+        //   falla con estos typeName).
+        // - El objeto Camera NO tiene deviceId, solo deviceSerialNumber — hay que
+        //   cruzarlo con Device.serialNumber (no con Device.id).
+        // - search de CameraEvent acepta fromDate/toDate (obligatorios),
+        //   cameraSerialNumbers y eventTypeFilter: [{ eventType: "..." }] — filtrar
+        //   por eventType EN EL SERVIDOR es importante: sin él, la respuesta trae
+        //   todos los tipos de evento del día (muy pesada) y puede truncarse en
+        //   silencio antes de completar el rango.
+        // - resultsLimit máximo real: 500 (no más) — paginar con "page" si hace falta.
+        getCameraSerialForDevice: async function(deviceId) {
+            if (!_cameraCache) {
+                _cameraCache = await rawApiCall('Get', { typeName: 'Camera' });
             }
+            const devicesCache = await this.getDevices();
+            const device = devicesCache.byId[deviceId];
+            if (!device || !device.serialNumber) return null;
+            const match = _cameraCache.find(c => c.deviceSerialNumber === device.serialNumber);
+            return match ? (match.cameraSerialNumber || null) : null;
+        },
 
-            if (trips.length === 0) throw new Error("No se encontraron viajes 'completed' válidos en el CSV.");
+        getCameraEvents: async function(deviceId, fromDate, toDate, eventType) {
+            const cameraSerial = await this.getCameraSerialForDevice(deviceId);
+            const search = {
+                fromDate: fromDate,
+                toDate: toDate,
+                eventTypeFilter: [{ eventType: eventType }]
+            };
+            if (cameraSerial) search.cameraSerialNumbers = [cameraSerial];
 
-            const allDates = trips.map(t => t.reqTime).filter(Boolean);
+            let raw = [];
+            let page = 0;
+            const pageSize = 500;
+            while (true) {
+                const batch = await rawApiCall('Get', {
+                    typeName: 'CameraEvent',
+                    search: search,
+                    resultsLimit: pageSize,
+                    page: page
+                });
+                if (!batch || batch.length === 0) break;
+                raw = raw.concat(batch);
+                if (batch.length < pageSize) break;
+                page++;
+                if (page > 20) break; // salvaguarda
+            }
+            return raw.filter(ev => ev.deviceId === deviceId && ev.eventType === eventType);
+        },
+
+        getCameraEventRecording: async function(eventId) {
+            return await rawApiCall('Get', { typeName: 'CameraEventRecording', eventId: eventId });
+        },
+
+        // ── GESTIÓN DE CSV MÚLTIPLES Y AUTO-DETECCIÓN ────────────────────────
+        parseMultipleCSVs: function(filesData) {
+            if (!filesData || filesData.length === 0) throw new Error("No hay archivos para procesar.");
+            
+            let allTrips = [];
+            // Guardamos el rango de fechas de CADA archivo por separado
+            const dateRanges = [];
+            
+            filesData.forEach(file => {
+                let text = file.text.replace(/^\uFEFF/, '');
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (lines.length < 2) {
+                    console.warn(`El archivo ${file.name} está vacío o no es válido.`);
+                    return;
+                }
+
+                // Auto-detección por cabeceras
+                const headerLine = lines[0];
+                const header = headerLine.split(';');
+                const idx = {};
+                header.forEach((h, i) => { idx[h.trim()] = i; });
+
+                let appType = 'unknown';
+                if (idx['UUID del viaje'] !== undefined || headerLine.includes('UUID del viaje') || headerLine.includes('Estado del viaje')) {
+                    appType = 'uber';
+                } else if (idx['Identificador individual'] !== undefined || headerLine.includes('Identificador individual') || headerLine.includes('Tarifa finalizada')) {
+                    appType = 'bolt';
+                }
+
+                let trips = [];
+                if (appType === 'uber') {
+                    trips = parseUberCSV(lines, idx);
+                } else if (appType === 'bolt') {
+                    trips = parseBoltCSV(lines, idx);
+                } else {
+                    console.warn(`No se pudo detectar el formato de ${file.name}. Formato no reconocido.`);
+                    return; // Skip este archivo
+                }
+                
+                if (trips.length > 0) {
+                    // Calcular y guardar el rango de fechas específico de este archivo
+                    const fileDates = trips.map(t => t.reqTime).filter(Boolean);
+                    const fileMin = new Date(Math.min(...fileDates));
+                    const fileMax = new Date(Math.max(...fileDates));
+                    fileMin.setHours(0, 0, 0, 0);
+                    fileMax.setHours(23, 59, 59, 999);
+                    
+                    const platesInFile = new Set(trips.map(t => t.plate));
+                    dateRanges.push({ min: fileMin, max: fileMax, plates: platesInFile });
+                }
+
+                trips.forEach(t => t.appSource = appType);
+                allTrips = allTrips.concat(trips);
+            });
+
+            if (allTrips.length === 0) throw new Error("No se encontraron viajes válidos en los archivos cargados.");
+
+            const allDates = allTrips.map(t => t.reqTime).filter(Boolean);
             const minDate = new Date(Math.min(...allDates));
             const maxDate = new Date(Math.max(...allDates));
             minDate.setHours(0,0,0,0);
             maxDate.setHours(23,59,59,999);
 
-            csvData.trips = trips;
-            csvData.plates = new Set(trips.map(t => t.plate));
+            csvData.trips = allTrips;
+            csvData.plates = new Set(allTrips.map(t => t.plate));
             csvData.minDate = minDate.toISOString();
             csvData.maxDate = maxDate.toISOString();
+            // ✔ Guardamos los rangos individuales para filtrar Geotab después
+            csvData.dateRanges = dateRanges;
 
             return {
-                tripsCount: trips.length,
+                tripsCount: allTrips.length,
                 platesCount: csvData.plates.size,
                 minDate: minDate,
                 maxDate: maxDate
