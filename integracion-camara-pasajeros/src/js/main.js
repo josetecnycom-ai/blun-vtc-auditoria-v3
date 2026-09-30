@@ -166,6 +166,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
     }
 
     async function runAudit() {
+        const auditStartedAt = Date.now();
         UI.showLoading('Preparando período y vehículos...');
         try {
             const devicesCache = await DataManager.getDevices();
@@ -275,7 +276,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 row.audit = RiskEngine.evaluateTrip(row);
                 return row;
             });
-            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate, elapsedSeconds: ((performance.now() - auditStartedAt) / 1000).toFixed(1) });
+            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate, elapsedSeconds: ((Date.now() - auditStartedAt) / 1000).toFixed(1) });
             UI._cachedData = { enriched, csvData: periodData, hasCsv, tolerance, targetDevices };
             UI.renderResults(enriched, periodData, tolerance, 0, targetDevices, hasCsv, cameraResult);
         } catch (error) {
