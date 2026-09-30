@@ -56,6 +56,28 @@ const RiskEngine = (function() {
                 }
             }
 
+            // ── 1.6. PASAJERO CONFIRMADO POR CÁMARA (Passenger.Disallowed) ──────
+            // occupiedPct viene del troceo por sub-segmentos (paradas rápidas como
+            // frontera) — más fino que un simple sí/no por viaje completo. Es una señal
+            // de ALTA confianza cuando dispara, pero puede dar falsos negativos (cámaras
+            // obstruidas); por eso solo penaliza cuando SÍ hay evidencia, nunca resta
+            // puntos por ausencia de evento.
+            const camEvents = trip.cameraFlags || [];
+            const occPct = trip.cameraOccupiedPct;
+            if (camEvents.length > 0) {
+                if (!isMatched) {
+                    // Más peso cuanto mayor es el % del trayecto confirmado ocupado
+                    const camScore = occPct !== null && occPct !== undefined
+                        ? Math.round(40 + (occPct / 100) * 40) // 40-80 según % ocupado
+                        : 70;
+                    score += camScore;
+                    fraudAlert = fraudAlert || `🎥 FRAUDE: Pasajero detectado por cámara (${occPct != null ? occPct + '% del trayecto' : camEvents.length + ' evento(s)'}) sin registro en APP`;
+                    reasons.push(`🚨 Pasajero confirmado por cámara${occPct != null ? ' (' + occPct + '% del trayecto)' : ''} y sin registro en APP (+${camScore})`);
+                } else {
+                    reasons.push(`📷 Pasajero confirmado por cámara${occPct != null ? ' (' + occPct + '% del trayecto)' : ' (' + camEvents.length + ')'} — coincide con registro en APP`);
+                }
+            }
+
             // ── 2. CANTIDAD DE PARADAS RÁPIDAS (evaluación conjunta, no acumulada) ──
             const n = stops.quickStops;
             if (n === 1) {

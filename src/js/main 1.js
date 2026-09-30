@@ -34,6 +34,25 @@ function navigateToTrip(event, deviceId, fromDate, toDate) {
     }
 }
 
+// Ver evidencia de un evento de cámara concreto (snapshot/vídeo) — abre la URL firmada en pestaña nueva
+async function viewCameraEvidence(event, eventId) {
+    if (event) event.preventDefault();
+    if (!eventId) return;
+    try {
+        const result = await DataManager.getCameraEventRecording(eventId);
+        const rec = Array.isArray(result) ? result[0] : result;
+        const url = rec && (rec.mediaUrls ? (rec.mediaUrls[0] || rec.mediaUrls) : rec.fileDownloadUrl);
+        if (url) {
+            window.open(url, '_blank');
+        } else {
+            alert('La grabación aún no está disponible o no se encontró para este evento.');
+        }
+    } catch (e) {
+        console.error('Error obteniendo la grabación de cámara', e);
+        alert('Error al obtener la evidencia de cámara: ' + e.message);
+    }
+}
+
 // Registro del addin con el key definido en el JSON
 geotab.addin.blunvtcauditoria = function(api, state) {
     return {
@@ -169,7 +188,14 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             // 1. Descargar Viajes y Eventos
             let allTrips = [];
             let allEvents = [];
+            const quickStopsByDevice = {};
+            const cameraEventsByDevice = {};
             const ruleId = RuleManager.hasParadaRapidaRule() ? RuleManager.getParadaRapidaId() : null;
+            const checkCamera = document.getElementById('checkCameraEvents')
+                ? document.getElementById('checkCameraEvents').checked
+                : false;
+            const cameraToleranceEl = document.getElementById('cameraTolerance');
+            const cameraTolerance = cameraToleranceEl ? (parseFloat(cameraToleranceEl.value) || 3) : 3;
 
             // Asegurar que tenemos dateRanges
             const dateRanges = csvData.dateRanges && csvData.dateRanges.length > 0
@@ -202,6 +228,13 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     if (ruleId) {
                         const devEvents = await DataManager.getExceptionEvents(ruleId, dev.id, devMinDate, devMaxDate);
                         allEvents = allEvents.concat(devEvents);
+                        quickStopsByDevice[dev.id] = devEvents;
+                    }
+
+                    if (checkCamera) {
+                        UI.updateLoading(`Consultando eventos de cámara... vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+                        const camEvents = await CameraAuditEngine.getEventsForDevice(dev.id, devMinDate, devMaxDate);
+                        cameraEventsByDevice[dev.id] = camEvents;
                     }
                 } catch(e) {
                     console.warn("Error descargando datos del vehiculo", dev.id, e);
@@ -273,6 +306,26 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     _stopAnalysis: t._stopAnalysis,
                     _matchedCsvTrips: matchedCSVTrips
                 };
+
+                // Cruce con eventos de cámara (Passenger.Disallowed), troceado por
+                // sub-segmentos delimitados por las paradas rápidas del propio viaje.
+                if (checkCamera) {
+                    const occ = CameraAuditEngine.evaluateTrip(
+                        t,
+                        quickStopsByDevice[dev.id] || [],
+                        cameraEventsByDevice[dev.id] || [],
+                        cameraTolerance
+                    );
+                    tripData.cameraFlags = occ.events;
+                    tripData.cameraSegments = occ.segments;
+                    tripData.cameraOccupiedPct = occ.occupiedPct;
+                    tripData.cameraOccupiedKm = occ.occupiedKm;
+                    tripData.cameraEmptyKm = occ.emptyKm;
+                } else {
+                    tripData.cameraFlags = [];
+                    tripData.cameraSegments = [];
+                    tripData.cameraOccupiedPct = null;
+                }
 
                 // Motor de Riesgo
                 tripData.audit = RiskEngine.evaluateTrip(tripData);

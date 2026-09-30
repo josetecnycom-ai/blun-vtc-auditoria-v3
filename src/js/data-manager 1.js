@@ -10,6 +10,7 @@ const DataManager = (function() {
         devices: null,
         rules: null
     };
+    let _cameraCache = null;
 
     // Estado del CSV
     let csvData = {
@@ -39,6 +40,49 @@ const DataManager = (function() {
             if (!api) return reject(new Error("API no inicializada"));
             api.call(method, params, resolve, reject);
         });
+    }
+
+    // ── LLAMADA RAW POR fetch() — necesaria para la API de vídeo (GVP) ──
+    // CONFIRMADO en pruebas: api.call() del SDK del addin falla con typeName
+    // "CameraEvent"/"Camera" ("An undefined exception has occurred"), pero el
+    // mismo payload por fetch() directo a apiv1 funciona perfectamente. Se usa
+    // SOLO para los typeName de vídeo; Trip/Device/Rule/ExceptionEvent siguen
+    // yendo por callApi (SDK), que ya funciona bien para esos.
+    let _session = null;
+    function getSession() {
+        if (_session) return Promise.resolve(_session);
+        return new Promise((resolve, reject) => {
+            if (!api) return reject(new Error('API no inicializada'));
+            api.getSession(function(session) {
+                _session = session;
+                resolve(session);
+            });
+        });
+    }
+
+    async function rawApiCall(method, params) {
+        const session = await getSession();
+        const host = session.server || 'my.geotab.com';
+        const body = {
+            method: method,
+            params: Object.assign({}, params, {
+                credentials: {
+                    database: session.database,
+                    userName: session.userName,
+                    sessionId: session.sessionId
+                }
+            })
+        };
+        const resp = await fetch('https://' + host + '/apiv1', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (data.error) {
+            throw new Error(data.error.message || JSON.stringify(data.error));
+        }
+        return data.result;
     }
 
     // ── PARSERS ESPECÍFICOS POR APP ──────────────────────────
@@ -182,6 +226,61 @@ const DataManager = (function() {
                 },
                 resultsLimit: 50000
             });
+        },
+
+        // ── GEOTAB VIDEO PLATFORM (GVP) ────────────────────────────────────
+        // CONFIRMADO EN PRUEBAS REALES (addin de test aislado, varias iteraciones):
+        // - Van por rawApiCall (fetch directo), NO por callApi (el SDK del addin
+        //   falla con estos typeName).
+        // - El objeto Camera NO tiene deviceId, solo deviceSerialNumber — hay que
+        //   cruzarlo con Device.serialNumber (no con Device.id).
+        // - search de CameraEvent acepta fromDate/toDate (obligatorios),
+        //   cameraSerialNumbers y eventTypeFilter: [{ eventType: "..." }] — filtrar
+        //   por eventType EN EL SERVIDOR es importante: sin él, la respuesta trae
+        //   todos los tipos de evento del día (muy pesada) y puede truncarse en
+        //   silencio antes de completar el rango.
+        // - resultsLimit máximo real: 500 (no más) — paginar con "page" si hace falta.
+        getCameraSerialForDevice: async function(deviceId) {
+            if (!_cameraCache) {
+                _cameraCache = await rawApiCall('Get', { typeName: 'Camera' });
+            }
+            const devicesCache = await this.getDevices();
+            const device = devicesCache.byId[deviceId];
+            if (!device || !device.serialNumber) return null;
+            const match = _cameraCache.find(c => c.deviceSerialNumber === device.serialNumber);
+            return match ? (match.cameraSerialNumber || null) : null;
+        },
+
+        getCameraEvents: async function(deviceId, fromDate, toDate, eventType) {
+            const cameraSerial = await this.getCameraSerialForDevice(deviceId);
+            const search = {
+                fromDate: fromDate,
+                toDate: toDate,
+                eventTypeFilter: [{ eventType: eventType }]
+            };
+            if (cameraSerial) search.cameraSerialNumbers = [cameraSerial];
+
+            let raw = [];
+            let page = 0;
+            const pageSize = 500;
+            while (true) {
+                const batch = await rawApiCall('Get', {
+                    typeName: 'CameraEvent',
+                    search: search,
+                    resultsLimit: pageSize,
+                    page: page
+                });
+                if (!batch || batch.length === 0) break;
+                raw = raw.concat(batch);
+                if (batch.length < pageSize) break;
+                page++;
+                if (page > 20) break; // salvaguarda
+            }
+            return raw.filter(ev => ev.deviceId === deviceId && ev.eventType === eventType);
+        },
+
+        getCameraEventRecording: async function(eventId) {
+            return await rawApiCall('Get', { typeName: 'CameraEventRecording', eventId: eventId });
         },
 
         // ── GESTIÓN DE CSV MÚLTIPLES Y AUTO-DETECCIÓN ────────────────────────

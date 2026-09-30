@@ -66,6 +66,7 @@ const UI = (function() {
             const totalMatched = data.filter(r => r.matched).length;
             const totalUnmatched = totalGeotab - totalMatched;
             const suspects = data.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO').length;
+            const cameraConfirmed = data.filter(r => r.cameraFlags && r.cameraFlags.length > 0 && !r.matched).length;
             const totalStopTimeSecs = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.totalStopTime : 0), 0);
             const totalQuickStops = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.quickStops : 0), 0);
             const avgRiskScore = totalGeotab > 0 ? (data.reduce((acc, r) => acc + r.audit.score, 0) / totalGeotab) : 0;
@@ -123,6 +124,11 @@ const UI = (function() {
                 <div class="metric" style="border-color:var(--warn);">
                     <div class="metric-label">🚨 Sospechosos</div>
                     <div class="metric-value">${suspects}</div>
+                </div>
+                <div class="metric" style="border-color:var(--danger);">
+                    <div class="metric-label">🎥 Confirmados por Cámara</div>
+                    <div class="metric-value" style="color:var(--danger);">${cameraConfirmed}</div>
+                    <div class="metric-sub">Pasajero detectado, sin registro en APP</div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Tiempo Detenido</div>
@@ -185,6 +191,7 @@ const UI = (function() {
                     <th>Trips Geotab</th>
                     <th>Cobertura APP</th>
                     <th>Paradas</th>
+                    <th>🎥 Cámara</th>
                     <th>Riesgo Medio</th>
                     <th></th>
                 </tr></thead>
@@ -194,6 +201,7 @@ const UI = (function() {
             vehicles.forEach((v, vi) => {
                 const cov = v.total > 0 ? (v.matched/v.total*100) : 0;
                 const totalVStops = v.trips.reduce((acc, t) => acc + (t._stopAnalysis ? t._stopAnalysis.quickStops : 0), 0);
+                const totalVCamera = v.trips.filter(t => t.cameraFlags && t.cameraFlags.length > 0 && !t.matched).length;
 
                 let vRiskClass = 'normal';
                 if (v.avgRisk > 60)      vRiskClass = 'critico';
@@ -218,6 +226,7 @@ const UI = (function() {
                         </div>
                     </td>
                     <td>${totalVStops}</td>
+                    <td>${totalVCamera > 0 ? `<span class="pill pill-danger">🎥 ${totalVCamera}</span>` : '<span style="color:var(--ink-light);">—</span>'}</td>
                     <td><span class="pill pill-${vRiskClass}">${v.avgRisk.toFixed(0)} pts</span></td>
                     <td style="color:var(--ink-light);font-size:12px;">🔍 Ficha Completa</td>
                 </tr>
@@ -293,12 +302,14 @@ const UI = (function() {
             const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO');
 
             const rows = [
-                ['Matrícula', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Estado APP / Alertas', 'Puntuación Riesgo', 'Nivel Riesgo', 'Paradas Rápidas', 'Tiempo Total Paradas', 'Motivos'],
+                ['Matrícula', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Estado APP / Alertas', 'Confirmado por Cámara', '% Trayecto Ocupado', 'Puntuación Riesgo', 'Nivel Riesgo', 'Paradas Rápidas', 'Tiempo Total Paradas', 'Motivos'],
                 ...suspects.map(r => [
                     r.plateOrig, r.geotabDriverName,
                     fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
                     r.gDur, r.gDist,
                     r.audit.fraudAlert ? r.audit.fraudAlert : (r.matched ? 'Sí' : 'No'),
+                    (r.cameraFlags && r.cameraFlags.length > 0) ? `Sí (${r.cameraFlags.length})` : 'No',
+                    (r.cameraOccupiedPct !== null && r.cameraOccupiedPct !== undefined) ? `${r.cameraOccupiedPct}%` : '—',
                     r.audit.score, r.audit.level,
                     r._stopAnalysis.quickStops,
                     fmtDur(r._stopAnalysis.totalStopTime),
@@ -308,7 +319,7 @@ const UI = (function() {
 
             const wb = XLSX.utils.book_new();
             const ws1 = XLSX.utils.aoa_to_sheet(rows);
-            ws1['!cols'] = [12, 25, 12, 10, 10, 12, 12, 12, 12, 10, 12, 18, 80].map(w => ({wch: w}));
+            ws1['!cols'] = [12, 25, 12, 10, 10, 12, 12, 12, 14, 12, 12, 10, 12, 18, 80].map(w => ({wch: w}));
             XLSX.utils.book_append_sheet(wb, ws1, 'Viajes Sospechosos');
 
             const today = new Date().toISOString().slice(0,10);
@@ -382,6 +393,37 @@ const UI = (function() {
                     ? `<span style="color:var(--warn);font-size:11px;">⚠️ ${t._stopAnalysis.quickStops} paradas</span>`
                     : '';
 
+                let cameraLink = '';
+                let occupancyBar = '';
+                let segmentsDetail = '';
+                if (t.cameraFlags && t.cameraFlags.length > 0) {
+                    const firstEventId = t.cameraFlags[0].id;
+                    cameraLink = `<a class="trip-link" href="#" style="background:var(--danger-dim);color:var(--danger);white-space:nowrap;"
+                       onclick="viewCameraEvidence(event, '${firstEventId}')">🎥 Ver evidencia (${t.cameraFlags.length})</a>`;
+                }
+                if (t.cameraOccupiedPct !== null && t.cameraOccupiedPct !== undefined && t.cameraSegments && t.cameraSegments.length > 1) {
+                    occupancyBar = `
+                        <div class="mini-bar" style="margin-top:2px;">
+                            <div class="mini-bar-bg" style="width:80px;display:flex;overflow:hidden;border-radius:3px;">
+                                <div style="width:${t.cameraOccupiedPct}%;background:var(--danger);height:5px;"></div>
+                                <div style="width:${100 - t.cameraOccupiedPct}%;background:var(--ok);height:5px;"></div>
+                            </div>
+                            <span style="font-size:10px;color:var(--ink-light);">${t.cameraOccupiedPct}% ocupado (${t.cameraSegments.length} tramos)</span>
+                        </div>`;
+
+                    segmentsDetail = `
+                        <details style="margin-top:4px;font-size:11px;color:var(--ink-mid);">
+                            <summary style="cursor:pointer;color:var(--accent);">Ver ${t.cameraSegments.length} sub-tramos</summary>
+                            <ul style="margin:4px 0 0 14px;padding:0;">
+                                ${t.cameraSegments.map(s => {
+                                    const from = new Date(s.from).toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+                                    const to = new Date(s.to).toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+                                    return `<li>${from}–${to}: ${s.occupied ? '🎥 con pasajero' : 'vacío'} (${s.events.length} ev.)</li>`;
+                                }).join('')}
+                            </ul>
+                        </details>`;
+                }
+
                 const riskColors = { critico: '#dc2626', alto: '#d97706', medio: '#ca8a04', bajo: '#16a34a', normal: '#6b7280' };
                 const riskBg = riskColors[adt.levelClass] || '#6b7280';
                 const reasonsHtml = adt.reasons.map(r => `<li>${r}</li>`).join('');
@@ -402,10 +444,15 @@ const UI = (function() {
                             </div>
                             <div style="font-size:11px; color:var(--ink-mid);">
                                 <ul style="margin:2px 0 0 14px; padding:0;">${reasonsHtml}</ul>
+                                ${occupancyBar}
+                                ${segmentsDetail}
                             </div>
                         </div>
-                        <a class="trip-link" href="#" style="white-space:nowrap; margin-top:4px;"
-                           onclick="navigateToTrip(event, '${t.deviceId}', '${fromIso}', '${toIso}')">Ver Mapa</a>
+                        <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;align-items:flex-end;">
+                            <a class="trip-link" href="#" style="white-space:nowrap;"
+                               onclick="navigateToTrip(event, '${t.deviceId}', '${fromIso}', '${toIso}')">Ver Mapa</a>
+                            ${cameraLink}
+                        </div>
                     </div>
                 </div>`;
             });
