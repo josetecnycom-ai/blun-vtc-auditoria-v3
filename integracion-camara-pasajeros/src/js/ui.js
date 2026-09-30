@@ -54,194 +54,51 @@ const UI = (function() {
         renderResults: function(trips, csvData, tolerance, minDist, targetDevices) {
             currentTrips = trips;
             if (targetDevices) _targetDevices = targetDevices;
-
-            const filterPl = document.getElementById('filterVehicle').value;
-            const showFilter = document.getElementById('filterShow').value;
-
-            let data = trips;
-            if (filterPl !== 'all') data = data.filter(r => r.plate === filterPl);
-
-            // Métricas
-            const totalGeotab = data.length;
-            const totalMatched = data.filter(r => r.matched).length;
-            const totalUnmatched = totalGeotab - totalMatched;
-            const suspects = data.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO').length;
-            const totalStopTimeSecs = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.totalStopTime : 0), 0);
-            const totalQuickStops = data.reduce((acc, r) => acc + (r._stopAnalysis ? r._stopAnalysis.quickStops : 0), 0);
-            const passengerFrauds = data.filter(r => r._passengerAnalysis && r._passengerAnalysis.hasPassenger && !r.matched).length;
-            const avgRiskScore = totalGeotab > 0 ? (data.reduce((acc, r) => acc + r.audit.score, 0) / totalGeotab) : 0;
-
-            const coveragePct = totalGeotab > 0 ? ((totalMatched / totalGeotab) * 100).toFixed(1) : 0;
-
-            // Agrupar por vehículo
-            const byPlate = {};
-            data.forEach(r => {
-                if (!byPlate[r.plate]) {
-                    byPlate[r.plate] = {
-                        plate: r.plate, plateOrig: r.plateOrig,
-                        deviceName: r.deviceName, deviceId: r.deviceId,
-                        total: 0, matched: 0, unmatched: 0,
-                        avgRisk: 0, _totalRisk: 0,
-                        trips: []
-                    };
-                }
-                byPlate[r.plate].total++;
-                if (r.matched) byPlate[r.plate].matched++;
-                else byPlate[r.plate].unmatched++;
-                byPlate[r.plate]._totalRisk += r.audit.score;
-                byPlate[r.plate].trips.push(r);
-            });
-
-            let vehicles = Object.values(byPlate);
-            vehicles.forEach(v => { v.avgRisk = v._totalRisk / v.total; });
-            vehicles.sort((a,b) => b.avgRisk - a.avgRisk);
-
+            const filter = document.getElementById('filterVehicle');
+            const data = filter && filter.value !== 'all' ? trips.filter(t => t.plate === filter.value) : trips;
+            const frauds = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched);
+            const registered = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && t.matched);
+            const eventMap = new Map();
+            data.forEach(t => (t._passengerAnalysis && t._passengerAnalysis.receivedEvents || []).forEach(e => {
+                const key = `${t.deviceId}:${e.id || e.eventStart}`;
+                if (!eventMap.has(key)) eventMap.set(key, e);
+            }));
+            const availableCount = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.available).length;
+            const unavailableReasons = Array.from(new Set(data.map(t => t._passengerAnalysis && t._passengerAnalysis.unavailableReason).filter(Boolean)));
+            const period = `${fmtDateShort(new Date(csvData.minDate))} – ${fmtDateShort(new Date(csvData.maxDate))}`;
             const html = [];
-
-            // ── DASHBOARD ──
             html.push(`
-            <div class="info-bar">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                Período: ${fmtDateShort(new Date(csvData.minDate))} – ${fmtDateShort(new Date(csvData.maxDate))} ·
-                Tolerancia ±${tolerance} min · Distancia mínima ≥ ${minDist} km ·
-                ${vehicles.length} vehículos analizados
-            </div>
-
-            <div class="metrics" style="grid-template-columns: repeat(auto-fit,minmax(140px,1fr));">
-                <div class="metric m-accent">
-                    <div class="metric-label">Trips Geotab</div>
-                    <div class="metric-value">${totalGeotab}</div>
+                <div class="info-bar">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Período: ${period} · ${data.length} viajes revisados · Tolerancia CSV ±${tolerance} min · Cámara ±${document.getElementById('cameraTolerance').value} min
                 </div>
-                <div class="metric m-ok">
-                    <div class="metric-label">Registrados APP</div>
-                    <div class="metric-value">${totalMatched}</div>
-                    <div class="metric-sub">${coveragePct}% cobertura</div>
+                ${unavailableReasons.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">Cámara no disponible en algunos vehículos: ${unavailableReasons.join(' · ')}</div>` : ''}
+                ${eventMap.size === 0 && availableCount > 0 ? `<div class="info-bar">La consulta de cámara se completó, pero no se recibieron eventos Passenger.Disallowed en este período. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
+                <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
+                    <div class="metric m-accent"><div class="metric-label">Eventos de ocupación</div><div class="metric-value">${eventMap.size}</div></div>
+                    <div class="metric m-ok"><div class="metric-label">Ocupación con viaje CSV</div><div class="metric-value">${registered.length}</div></div>
+                    <div class="metric m-danger"><div class="metric-label">Ocupación sin registro</div><div class="metric-value">${frauds.length}</div><div class="metric-sub">Sospechas claras para revisar</div></div>
                 </div>
-                <div class="metric m-danger">
-                    <div class="metric-label">No Registrados</div>
-                    <div class="metric-value">${totalUnmatched}</div>
-                </div>
-                <div class="metric" style="border-color:var(--warn);">
-                    <div class="metric-label">🚨 Sospechosos</div>
-                    <div class="metric-value">${suspects}</div>
-                </div>
-                <div class="metric m-danger">
-                    <div class="metric-label">🎥 Ocupación sin APP</div>
-                    <div class="metric-value">${passengerFrauds}</div>
-                    <div class="metric-sub">Fraude probable</div>
-                </div>                <div class="metric">
-                    <div class="metric-label">Tiempo Detenido</div>
-                    <div class="metric-value" style="font-size:20px;">${fmtDur(totalStopTimeSecs)}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Paradas Rápidas</div>
-                    <div class="metric-value" style="font-size:22px;">${totalQuickStops}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Riesgo Medio</div>
-                    <div class="metric-value" style="font-size:22px;">${avgRiskScore.toFixed(0)} pts</div>
-                </div>
-            </div>
             `);
-
-            // ── HEATMAP ──
-            const hmTrips = data.filter(r => !r.matched);
-            html.push(UI.generateHeatmap(hmTrips));
-
-            // ── CHARTS ──
+            html.push(UI.generateHeatmap(frauds));
             html.push(`
-            <div class="charts-container" style="display:flex; gap:20px; margin: 20px 0; flex-wrap:wrap;">
-                <div class="chart-card" style="flex: 1; min-width: 300px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border);">
-                    <h3 style="margin-top:0; margin-bottom:15px; font-size:14px; color:var(--ink);">Cobertura APP vs Geotab</h3>
-                    <div style="position:relative; height:220px; width:100%;">
-                        <canvas id="chartCoverage"></canvas>
-                    </div>
+                <div class="table-card">
+                    <div class="table-toolbar"><span class="table-title">Viajes con ocupación sin coincidencia en CSV</span></div>
+                    ${frauds.length ? `<div class="table-wrap"><table><thead><tr><th>Vehículo</th><th>Fecha</th><th>Inicio Geotab</th><th>Fin Geotab</th><th>Eventos</th><th>CSV</th><th></th></tr></thead><tbody>
+                        ${frauds.slice().sort((a,b) => b.gStart - a.gStart).map(t => `<tr>
+                            <td><strong>${t.plateOrig}</strong></td><td>${fmtDate(t.gStart)}</td><td>${fmtTime(t.gStart)}</td><td>${fmtTime(t.gStop)}</td>
+                            <td>${t._passengerAnalysis.events.length}</td><td><span class="pill pill-danger">Sin coincidencia</span></td>
+                            <td><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver viaje</a></td>
+                        </tr>`).join('')}
+                    </tbody></table></div>` : `<div class="state"><p>No hay viajes con ocupación detectada sin coincidencia en el CSV para los filtros seleccionados.</p></div>`}
+                    <div class="table-footer"><span>${frauds.length} sospechas claras · ${data.length} viajes revisados</span></div>
                 </div>
-                <div class="chart-card" style="flex: 2; min-width: 400px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border);">
-                    <h3 style="margin-top:0; margin-bottom:15px; font-size:14px; color:var(--ink);">Top 5 Vehículos con Mayor Riesgo</h3>
-                    <div style="position:relative; height:220px; width:100%;">
-                        <canvas id="chartRisk"></canvas>
-                    </div>
-                </div>
-            </div>
             `);
-
-            // ── TABLA DE VEHÍCULOS ──
-            html.push(`
-            <div class="table-card">
-                <div class="table-toolbar">
-                    <span class="table-title">Análisis de Flota</span>
-                    <div class="table-controls">
-                        <input class="search" id="searchInput" placeholder="Buscar matrícula…" onkeyup="
-                            const q = this.value.toLowerCase();
-                            document.querySelectorAll('.vehicle-row').forEach(row => {
-                                const text = row.textContent.toLowerCase();
-                                row.style.display = text.includes(q) ? '' : 'none';
-                                const next = row.nextElementSibling;
-                                if (next) next.style.display = text.includes(q) ? '' : 'none';
-                            });
-                        "/>
-                    </div>
-                </div>
-                <div class="table-wrap">
-                <table>
-                <thead><tr>
-                    <th>Vehículo</th>
-                    <th>Trips Geotab</th>
-                    <th>Cobertura APP</th>
-                    <th>Paradas</th>
-                    <th>Riesgo Medio</th>
-                    <th></th>
-                </tr></thead>
-                <tbody>
-            `);
-
-            vehicles.forEach((v, vi) => {
-                const cov = v.total > 0 ? (v.matched/v.total*100) : 0;
-                const totalVStops = v.trips.reduce((acc, t) => acc + (t._stopAnalysis ? t._stopAnalysis.quickStops : 0), 0);
-
-                let vRiskClass = 'normal';
-                if (v.avgRisk > 60)      vRiskClass = 'critico';
-                else if (v.avgRisk > 40) vRiskClass = 'alto';
-                else if (v.avgRisk > 20) vRiskClass = 'medio';
-                else if (v.avgRisk > 10) vRiskClass = 'bajo';
-
-                const barColor = cov >= 85 ? 'var(--ok)' : cov >= 60 ? 'var(--warn)' : 'var(--danger)';
-
-                let detailTrips = v.trips.slice();
-                if (showFilter === 'unmatched') detailTrips = detailTrips.filter(t => !t.matched);
-                detailTrips.sort((a,b) => b.audit.score - a.audit.score);
-
-                html.push(`
-                <tr class="vehicle-row" onclick="UI.showVehicleModal('${v.plateOrig}')">
-                    <td><strong>${v.plateOrig}</strong> <small style="color:var(--ink-mid);">${v.deviceName}</small></td>
-                    <td>${v.total} <small style="color:var(--danger)">(${v.unmatched} sin APP)</small></td>
-                    <td>
-                        <div class="mini-bar">
-                            <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${cov.toFixed(0)}%;background:${barColor};"></div></div>
-                            <span style="font-size:10px;">${cov.toFixed(0)}%</span>
-                        </div>
-                    </td>
-                    <td>${totalVStops}</td>
-                    <td><span class="pill pill-${vRiskClass}">${v.avgRisk.toFixed(0)} pts</span></td>
-                    <td style="color:var(--ink-light);font-size:12px;">🔍 Ficha Completa</td>
-                </tr>
-                `);
-            });
-
-            html.push(`</tbody></table></div>`);
-            html.push(`<div class="table-footer"><span>${vehicles.length} vehículos · ${data.length} trips analizados</span></div>`);
-            html.push(`</div>`);
-
             document.getElementById('resultsArea').innerHTML = html.join('');
             document.getElementById('btnExport').style.display = 'inline-flex';
             const btnPdf = document.getElementById('btnExportPDF');
             if (btnPdf) btnPdf.style.display = 'inline-flex';
-            
-            // Iniciar gráficos
-            initCharts(totalMatched, totalUnmatched, vehicles);
         },
-
         // ── GENERATE HEATMAP ─────────────────────────────────────
         generateHeatmap: function(trips) {
             const map = Array(7).fill(0).map(() => Array(24).fill(0));
@@ -267,7 +124,7 @@ const UI = (function() {
                         const alpha = 0.15 + (intensity * 0.85);
                         bg = `rgba(220, 38, 38, ${alpha})`;
                     }
-                    const tooltip = `${days[d]} ${h.toString().padStart(2,'0')}:00 - ${count} viajes sin APP`;
+                    const tooltip = `${days[d]} ${h.toString().padStart(2,'0')}:00 - ${count} casos de ocupación sin registro`;
                     gridHtml += `<div class="hm-cell" style="background:${bg};" title="${tooltip}"></div>`;
                 }
             }
@@ -279,7 +136,7 @@ const UI = (function() {
 
             return `
             <div class="heatmap-wrapper">
-                <div class="heatmap-title">Mapa de Calor: Frecuencia de Viajes "Sin APP"</div>
+                <div class="heatmap-title">Mapa de calor: ocupación detectada sin coincidencia CSV</div>
                 <div class="heatmap-layout">
                     <div class="heatmap-y-labels">
                         ${days.map(d => `<span>${d}</span>`).join('')}
@@ -293,33 +150,19 @@ const UI = (function() {
         },
 
         // ── EXPORT EXCEL ─────────────────────────────────────────
-        exportExcel: function(csvData) {
-            if (!currentTrips || currentTrips.length === 0) return;
-            const suspects = currentTrips.filter(r => r.audit.level === 'ALTO' || r.audit.level === 'CRÍTICO');
-
+        exportExcel: function() {
+            const frauds = currentTrips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched);
+            if (!frauds.length) return;
             const rows = [
-                ['Matrícula', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Estado APP / Alertas', 'Puntuación Riesgo', 'Nivel Riesgo', 'Paradas Rápidas', 'Tiempo Total Paradas', 'Motivos'],
-                ...suspects.map(r => [
-                    r.plateOrig, r.geotabDriverName,
-                    fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
-                    r.gDur, r.gDist,
-                    r.audit.fraudAlert ? r.audit.fraudAlert : (r.matched ? 'Sí' : 'No'),
-                    r.audit.score, r.audit.level,
-                    r._stopAnalysis.quickStops,
-                    fmtDur(r._stopAnalysis.totalStopTime),
-                    r.audit.reasons.join(' | ')
-                ])
+                ['Matrícula', 'Fecha', 'Inicio Geotab', 'Fin Geotab', 'Eventos Passenger.Disallowed', 'Paradas rápidas', 'Estado CSV'],
+                ...frauds.map(t => [t.plateOrig, fmtDate(t.gStart), fmtTime(t.gStart), fmtTime(t.gStop),
+                    t._passengerAnalysis.events.length, t._stopAnalysis ? t._stopAnalysis.quickStops : 0, 'Sin coincidencia'])
             ];
-
             const wb = XLSX.utils.book_new();
-            const ws1 = XLSX.utils.aoa_to_sheet(rows);
-            ws1['!cols'] = [12, 25, 12, 10, 10, 12, 12, 12, 12, 10, 12, 18, 80].map(w => ({wch: w}));
-            XLSX.utils.book_append_sheet(wb, ws1, 'Viajes Sospechosos');
-
-            const today = new Date().toISOString().slice(0,10);
-            XLSX.writeFile(wb, `auditoria_vtc_${today}.xlsx`);
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws, 'Ocupación sin registro');
+            XLSX.writeFile(wb, `ocupacion_sin_registro_${new Date().toISOString().slice(0,10)}.xlsx`);
         },
-
         // ── EXPORT PDF ───────────────────────────────────────────
         exportPDF: function(csvData) {
             if (typeof html2pdf === 'undefined') {

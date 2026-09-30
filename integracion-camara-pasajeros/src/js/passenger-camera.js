@@ -72,7 +72,7 @@ const PassengerCamera = (function() {
                     return segments.some(segment => at >= segment.from && at <= segment.to);
                 });
                 trip._passengerAnalysis = { available, unavailableReason: unavailableByDevice[deviceId] || null,
-                    events, hasPassenger: available && events.length > 0, segmentsCount: segments.length };
+                    events, receivedEvents: cameraEvents[deviceId] || [], hasPassenger: available && events.length > 0, segmentsCount: segments.length };
             });
             return trips;
         }

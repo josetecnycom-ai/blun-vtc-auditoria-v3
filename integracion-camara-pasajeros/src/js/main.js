@@ -165,7 +165,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             const fromDate = csvData.minDate;
             const toDate = csvData.maxDate;
             const tolerance = parseInt(document.getElementById('tolerance').value) || 5;
-            const minDist = parseFloat(document.getElementById('minDist').value) || 0.5;
+            const minDist = 0;
 
             // 1. Descargar Viajes y Eventos
             let allTrips = [];
@@ -218,13 +218,14 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                         } catch (stopError) {
                             console.warn('Error descargando eventos de Parada Rápida', dev.id, stopError);
                         }
-                    }                } catch(e) {
+                    }
+                } catch(e) {
                     console.warn("Error descargando datos del vehiculo", dev.id, e);
                 }
             }
 
             const geotabFiltered = allTrips.filter(t => {
-                if ((t.distance || 0) < minDist) return false;
+
                 const tStart = new Date(t.start || t.startTime).getTime();
                 const tStop  = new Date(t.stop  || t.stopTime).getTime();
                 const plate = t._device._matchedCsvPlate;
@@ -245,7 +246,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
 
             const cameraTolerance = Math.max(0, parseInt(document.getElementById('cameraTolerance').value) || 0) * 60000;
             PassengerCamera.analyzeTrips(geotabFiltered, cameraEventsByDevice, allEvents, cameraUnavailableByDevice, cameraTolerance);
-            UI.updateLoading("Cruzando datos, ocupación y calculando Índice de Confianza...");
+            UI.updateLoading("Comparando ocupación detectada con viajes CSV...");
             
             // 3. Cruce con CSV y Motor de Riesgo
             const tolMs = tolerance * 60 * 1000;
