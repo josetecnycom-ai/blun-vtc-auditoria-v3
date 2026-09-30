@@ -564,6 +564,51 @@ const DataManager = (function() {
             return cache.rules;
         },
 
+        getTripsAndExceptionsBatch: async function(requests, ruleId, batchSize, onProgress) {
+            const output = {};
+            const size = Math.max(1, Math.min(batchSize || 50, 50));
+            for (let offset = 0; offset < requests.length; offset += size) {
+                const batch = requests.slice(offset, offset + size);
+                const calls = [];
+                batch.forEach(request => {
+                    calls.push(['Get', { typeName: 'Trip', search: {
+                        fromDate: request.fromDate, toDate: request.toDate, deviceSearch: { id: request.device.id }
+                    }, resultsLimit: 50000 }]);
+                    if (ruleId) calls.push(['Get', { typeName: 'ExceptionEvent', search: {
+                        ruleSearch: { id: ruleId }, deviceSearch: { id: request.device.id },
+                        fromDate: request.fromDate, toDate: request.toDate
+                    }, resultsLimit: 50000 }]);
+                });
+                if (onProgress) onProgress(Math.min(offset + batch.length, requests.length), requests.length);
+                try {
+                    const results = await new Promise((resolve, reject) => {
+                        if (!api || typeof api.multiCall !== 'function') return reject(new Error('Geotab API multiCall no disponible.'));
+                        api.multiCall(calls, resolve, reject);
+                    });
+                    batch.forEach((request, index) => {
+                        const stride = ruleId ? 2 : 1;
+                        output[request.device.id] = {
+                            trips: Array.isArray(results[index * stride]) ? results[index * stride] : [],
+                            exceptions: ruleId && Array.isArray(results[index * stride + 1]) ? results[index * stride + 1] : [],
+                            error: null
+                        };
+                    });
+                } catch (batchError) {
+                    // If a MultiCall is rejected, fall back per device so diagnostics remain specific.
+                    const fallback = await Promise.all(batch.map(async request => {
+                        try {
+                            const trips = await this.getTrips(request.device.id, request.fromDate, request.toDate);
+                            const exceptions = ruleId ? await this.getExceptionEvents(ruleId, request.device.id, request.fromDate, request.toDate) : [];
+                            return { id: request.device.id, trips, exceptions, error: null };
+                        } catch (error) {
+                            return { id: request.device.id, trips: [], exceptions: [], error: error.message || batchError.message };
+                        }
+                    }));
+                    fallback.forEach(result => { output[result.id] = result; });
+                }
+            }
+            return output;
+        },
         getTrips: async function(deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'Trip',
@@ -795,13 +840,14 @@ const StopAnalyzer = (function() {
 
 
 // --- passenger-camera.js ---
-// passenger-camera.js
-// Consulta CameraEvent y asigna Passenger.Disallowed a segmentos separados por Parada Rápida.
+// Consulta en bloque CameraEvent y conserva diagnóstico de asociación/cobertura por vehículo.
 const PassengerCamera = (function() {
     const EVENT_TYPE = 'Passenger.Disallowed';
     let api = null;
     let sessionPromise = null;
     let camerasPromise = null;
+
+    function normalizeSerial(value) { return String(value || '').trim().toUpperCase(); }
     function getSession() {
         if (!sessionPromise) sessionPromise = new Promise((resolve, reject) => {
             if (!api) return reject(new Error('API no inicializada'));
@@ -823,7 +869,7 @@ const PassengerCamera = (function() {
         return payload.result;
     }
     async function getCameras() {
-        if (!camerasPromise) camerasPromise = rawApiCall('Get', { typeName: 'Camera' });
+        if (!camerasPromise) camerasPromise = rawApiCall('Get', { typeName: 'Camera', resultsLimit: 5000 });
         return camerasPromise;
     }
     function segmentsForTrip(trip, quickStops, toleranceMs) {
@@ -842,34 +888,107 @@ const PassengerCamera = (function() {
         if (!segments.length && stop >= start) segments.push({ from: start, to: stop });
         return segments.map(s => ({ from: s.from - toleranceMs, to: s.to + toleranceMs }));
     }
+
     return {
         init: function(geotabApi) { api = geotabApi; },
-        fetchForDevice: async function(device, fromDate, toDate) {
-            if (!device || !device.serialNumber) return { available: false, reason: 'El vehículo no tiene número de serie GO.', events: [] };
-            const cameras = await getCameras();
-            const camera = (cameras || []).find(c => c.deviceSerialNumber === device.serialNumber);
-            if (!camera || !camera.cameraSerialNumber) return { available: false, reason: 'No se encontró cámara asociada al vehículo.', events: [] };
-            const search = { fromDate, toDate, cameraSerialNumbers: [camera.cameraSerialNumber], eventTypeFilter: [{ eventType: EVENT_TYPE }] };
-            const events = [];
-            for (let page = 0; page <= 20; page++) {
-                const batch = await rawApiCall('Get', { typeName: 'CameraEvent', search, resultsLimit: 500, page });
-                if (!batch || !batch.length) break;
-                batch.forEach(e => { if (e.deviceId === device.id && e.eventType === EVENT_TYPE) events.push(e); });
-                if (batch.length < 500) break;
-                if (page === 20) throw new Error('Se alcanzó el máximo de páginas de CameraEvent. Reduce el rango de fechas.');
+        fetchForDevices: async function(devices, fromDate, toDate) {
+            const eventsByDevice = {};
+            const diagnosticsByDevice = {};
+            const candidateCameras = [];
+            (devices || []).forEach(device => {
+                eventsByDevice[device.id] = [];
+                diagnosticsByDevice[device.id] = {
+                    deviceId: device.id, deviceName: device.name || device.id,
+                    deviceSerialNumber: device.serialNumber || '', cameraSerialNumber: '',
+                    status: 'pending', reason: '', eventsReceived: 0
+                };
+                if (!device.serialNumber) {
+                    diagnosticsByDevice[device.id].status = 'missing_device_serial';
+                    diagnosticsByDevice[device.id].reason = 'El objeto Device no incluye serialNumber.';
+                }
+            });
+
+            let cameras;
+            try { cameras = await getCameras(); }
+            catch (error) {
+                Object.values(diagnosticsByDevice).forEach(d => {
+                    if (d.status === 'pending') { d.status = 'camera_catalog_error'; d.reason = error.message; }
+                });
+                return { eventsByDevice, diagnosticsByDevice };
             }
-            return { available: true, events };
+
+            const cameraByDeviceSerial = new Map();
+            (cameras || []).forEach(camera => {
+                const key = normalizeSerial(camera.deviceSerialNumber);
+                if (key && !cameraByDeviceSerial.has(key)) cameraByDeviceSerial.set(key, camera);
+            });
+            (devices || []).forEach(device => {
+                const diagnostic = diagnosticsByDevice[device.id];
+                if (diagnostic.status !== 'pending') return;
+                const camera = cameraByDeviceSerial.get(normalizeSerial(device.serialNumber));
+                if (!camera) {
+                    diagnostic.status = 'camera_not_linked';
+                    diagnostic.reason = 'No hay Camera.deviceSerialNumber que coincida con Device.serialNumber.';
+                    return;
+                }
+                if (!camera.cameraSerialNumber) {
+                    diagnostic.status = 'camera_serial_missing';
+                    diagnostic.reason = 'La entidad Camera no incluye cameraSerialNumber.';
+                    return;
+                }
+                diagnostic.cameraSerialNumber = camera.cameraSerialNumber;
+                diagnostic.status = 'pending_events';
+                candidateCameras.push({ deviceId: device.id, cameraSerialNumber: camera.cameraSerialNumber });
+            });
+
+            if (!candidateCameras.length) return { eventsByDevice, diagnosticsByDevice };
+            const serials = Array.from(new Set(candidateCameras.map(c => c.cameraSerialNumber)));
+            const deviceById = new Set(candidateCameras.map(c => c.deviceId));
+            try {
+                const search = { fromDate, toDate, cameraSerialNumbers: serials, eventTypeFilter: [{ eventType: EVENT_TYPE }] };
+                const allEvents = [];
+                const pageSize = 500;
+                for (let page = 0; page <= 20; page++) {
+                    const batch = await rawApiCall('Get', { typeName: 'CameraEvent', search, resultsLimit: pageSize, page });
+                    if (!batch || !batch.length) break;
+                    allEvents.push(...batch);
+                    if (batch.length < pageSize) break;
+                    if (page === 20) throw new Error('Se superó el límite de 10.500 eventos; reduce el período de consulta.');
+                }
+                allEvents.forEach(event => {
+                    if (event.eventType === EVENT_TYPE && deviceById.has(event.deviceId)) eventsByDevice[event.deviceId].push(event);
+                });
+                candidateCameras.forEach(camera => {
+                    const diagnostic = diagnosticsByDevice[camera.deviceId];
+                    diagnostic.status = 'ok';
+                    diagnostic.eventsReceived = eventsByDevice[camera.deviceId].length;
+                });
+            } catch (error) {
+                candidateCameras.forEach(camera => {
+                    const diagnostic = diagnosticsByDevice[camera.deviceId];
+                    diagnostic.status = 'camera_event_error';
+                    diagnostic.reason = error.message;
+                });
+            }
+            return { eventsByDevice, diagnosticsByDevice };
         },
-        analyzeTrips: function(trips, cameraEvents, quickStops, unavailableByDevice, toleranceMs) {
+        analyzeTrips: function(trips, cameraResult, quickStops, toleranceMs) {
+            const eventsByDevice = cameraResult.eventsByDevice || {};
+            const diagnostics = cameraResult.diagnosticsByDevice || {};
             trips.forEach(trip => {
-                const deviceId = trip._device.id, available = !unavailableByDevice[deviceId];
+                const deviceId = trip._device.id;
+                const diagnostic = diagnostics[deviceId] || { status: 'camera_not_queried', reason: 'No se consultó esta cámara.', eventsReceived: 0 };
+                const available = diagnostic.status === 'ok';
                 const segments = segmentsForTrip(trip, quickStops, toleranceMs);
-                const events = (cameraEvents[deviceId] || []).filter(event => {
+                const events = (eventsByDevice[deviceId] || []).filter(event => {
                     const at = new Date(event.eventStart).getTime();
                     return segments.some(segment => at >= segment.from && at <= segment.to);
                 });
-                trip._passengerAnalysis = { available, unavailableReason: unavailableByDevice[deviceId] || null,
-                    events, receivedEvents: cameraEvents[deviceId] || [], hasPassenger: available && events.length > 0, segmentsCount: segments.length };
+                trip._passengerAnalysis = {
+                    available, status: diagnostic.status, unavailableReason: diagnostic.reason || null,
+                    events, receivedEvents: eventsByDevice[deviceId] || [],
+                    hasPassenger: available && events.length > 0, segmentsCount: segments.length
+                };
             });
             return trips;
         }
@@ -957,37 +1076,47 @@ const UI = (function() {
         _cachedData: null,
 
         // ── RENDER PRINCIPAL ─────────────────────────────────────
-        renderResults: function(trips, periodData, tolerance, cameraTolerance, targetDevices, hasCsv) {
+        renderResults: function(trips, periodData, tolerance, cameraTolerance, targetDevices, hasCsv, cameraResult) {
             currentTrips = trips;
             if (targetDevices) _targetDevices = targetDevices;
             const filter = document.getElementById('filterVehicle');
             const data = filter && filter.value !== 'all' ? trips.filter(t => t.deviceId === filter.value) : trips;
+            const diagnosticsMap = cameraResult && cameraResult.diagnosticsByDevice || {};
+            const visibleDiagnostics = Object.values(diagnosticsMap).filter(d => !filter || filter.value === 'all' || d.deviceId === filter.value);
             const occupied = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger);
             const noEvent = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger);
-            const unavailable = data.filter(t => !t._passengerAnalysis || !t._passengerAnalysis.available);
             const registered = occupied.filter(t => t.matched);
             const frauds = hasCsv ? occupied.filter(t => !t.matched) : [];
             const eventMap = new Map();
-            data.forEach(t => (t._passengerAnalysis && t._passengerAnalysis.receivedEvents || []).forEach(e => {
-                const key = `${t.deviceId}:${e.id || e.eventStart}`;
+            Object.entries(cameraResult && cameraResult.eventsByDevice || {}).forEach(([deviceId, events]) => events.forEach(e => {
+                const key = `${deviceId}:${e.id || e.eventStart}`;
                 if (!eventMap.has(key)) eventMap.set(key, e);
             }));
             const byVehicle = new Map();
+            visibleDiagnostics.forEach(d => byVehicle.set(d.deviceId, { name: d.deviceName, trips: [], deviceId: d.deviceId, diagnostic: d }));
             data.forEach(t => {
                 const key = t.deviceId;
-                if (!byVehicle.has(key)) byVehicle.set(key, { name: t.plateOrig || t.deviceName, trips: [], deviceId: key });
+                if (!byVehicle.has(key)) byVehicle.set(key, { name: t.plateOrig || t.deviceName, trips: [], deviceId: key, diagnostic: diagnosticsMap[key] });
                 byVehicle.get(key).trips.push(t);
             });
             const vehicles = Array.from(byVehicle.values()).sort((a,b) => a.name.localeCompare(b.name, 'es'));
-            const period = `${fmtDateShort(new Date(periodData.minDate))} – ${fmtDateShort(new Date(periodData.maxDate))}`;
+            const okCameraCount = visibleDiagnostics.filter(d => d.status === 'ok').length;
+            const issueDiagnostics = visibleDiagnostics.filter(d => d.status !== 'ok');
+            const statusLabels = {
+                ok: 'Consulta OK', missing_device_serial: 'Sin serial GO',
+                camera_catalog_error: 'Error catálogo Camera', camera_not_linked: 'Camera no asociada',
+                camera_serial_missing: 'Sin serial cámara', camera_event_error: 'Error CameraEvent',
+                camera_not_queried: 'No consultada', pending: 'Pendiente', pending_events: 'Pendiente'
+            };
+            const escapeHtml = value => String(value || '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));            const period = `${fmtDateShort(new Date(periodData.minDate))} – ${fmtDateShort(new Date(periodData.maxDate))}`;
             const html = [];
             html.push(`
                 <div class="info-bar">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Período: ${period} · ${data.length} viajes Geotab · ${hasCsv ? `CSV cargado, tolerancia ±${tolerance} min` : 'modo resumen de cámara'} · Cámara ±${document.getElementById('cameraTolerance').value} min
+                    Período: ${period} · ${data.length} viajes Geotab · ${visibleDiagnostics.length} vehículos · ${okCameraCount} cámaras consultadas OK · ${issueDiagnostics.length} incidencias · ${hasCsv ? `CSV ±${tolerance} min` : 'sin CSV'} · Cámara ±${document.getElementById('cameraTolerance').value} min · ${periodData.elapsedSeconds || 0}s
                 </div>
-                ${unavailable.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">Sin cobertura de cámara en ${unavailable.length} viaje(s); no se clasifican como “sin ocupación”.</div>` : ''}
-                ${eventMap.size === 0 && data.length > unavailable.length ? `<div class="info-bar">La cámara se consultó correctamente, pero no se recibieron eventos Passenger.Disallowed. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
+                ${issueDiagnostics.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">${issueDiagnostics.length} vehículo(s) con incidencias de cámara. La columna Estado cámara muestra el motivo exacto.</div>` : ''}
+                ${eventMap.size === 0 && okCameraCount > 0 ? `<div class="info-bar">La cámara se consultó correctamente, pero no se recibieron eventos Passenger.Disallowed. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
                 ${!hasCsv ? `<div class="info-bar">“Sin evento detectado” solo cuenta viajes con cámara disponible; no confirma por sí solo que viajaran sin pasajeros.</div>` : ''}
                 <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
                     ${hasCsv ? `
@@ -1006,13 +1135,19 @@ const UI = (function() {
                 <div class="table-card">
                     <div class="table-toolbar"><span class="table-title">Resumen por vehículo</span></div>
                     ${vehicles.length ? `<div class="table-wrap"><table><thead><tr>
-                        <th>Vehículo</th><th>Viajes Geotab</th><th>Con ocupación</th><th>Sin evento detectado</th><th>Sin cobertura cámara</th>${hasCsv ? '<th>Ocupación sin CSV</th>' : ''}
+                        <th>Vehículo</th><th>Viajes Geotab</th><th>Con ocupación</th><th>Sin evento detectado</th><th>Eventos recibidos</th><th>Seriales</th><th>Estado cámara</th>${hasCsv ? '<th>Ocupación sin CSV</th>' : ''}
                     </tr></thead><tbody>${vehicles.map(v => {
                         const withOccupancy = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger).length;
                         const withoutEvent = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger).length;
-                        const noCoverage = v.trips.length - withOccupancy - withoutEvent;
+                        const diagnostic = v.diagnostic || {};
+                        const received = diagnostic.eventsReceived || 0;
+                        const status = statusLabels[diagnostic.status] || diagnostic.status || 'Sin diagnóstico';
+                        const reason = diagnostic.reason || diagnostic.tripQueryError || '';
+                        const serials = 'GO: ' + (diagnostic.deviceSerialNumber || 'no disponible') + (diagnostic.cameraSerialNumber ? ' · Cámara: ' + diagnostic.cameraSerialNumber : '');
+                        const statusClass = diagnostic.status === 'ok' ? 'pill-ok' : 'pill-warn';
+                        const statusCell = `<span class="pill ${statusClass}" title="${escapeHtml(reason)}">${escapeHtml(status)}</span>${reason ? `<div style="font-size:10px;color:var(--ink-mid);max-width:260px;white-space:normal;">${escapeHtml(reason)}</div>` : ''}`;
                         const suspicious = hasCsv ? v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched).length : 0;
-                        return `<tr><td><strong>${v.name}</strong></td><td>${v.trips.length}</td><td>${withOccupancy}</td><td>${withoutEvent}</td><td>${noCoverage}</td>${hasCsv ? `<td>${suspicious}</td>` : ''}</tr>`;
+                        return `<tr><td><strong>${escapeHtml(v.name)}</strong></td><td>${v.trips.length}</td><td>${withOccupancy}</td><td>${withoutEvent}</td><td>${received}</td><td style="font-size:10px;">${escapeHtml(serials)}</td><td>${statusCell}</td>${hasCsv ? `<td>${suspicious}</td>` : ''}</tr>`;
                     }).join('')}</tbody></table></div>` : `<div class="state"><p>No se encontraron viajes Geotab en este período para los vehículos seleccionados.</p></div>`}
                     <div class="table-footer"><span>${vehicles.length} vehículos · ${data.length} viajes analizados</span></div>
                 </div>
@@ -1494,7 +1629,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             document.getElementById('dateFrom').value = toDateInputValue(stats.minDate);
             document.getElementById('dateTo').value = toDateInputValue(stats.maxDate);
             document.getElementById('csvToleranceGroup').style.display = 'flex';
-            updateRunState();        } catch (err) {
+            updateRunState();
+        } catch (err) {
             alert("Error al procesar archivos: " + err.message);
         }
     }
@@ -1541,13 +1677,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             const dateRanges = hasCsv && csvData.dateRanges && csvData.dateRanges.length
                 ? csvData.dateRanges
                 : [{ min: new Date(windowStart), max: new Date(windowEnd), plates: new Set(Array.from(csvPlates)) }];
-            const allTrips = [];
-            const allEvents = [];
-            const cameraEventsByDevice = {};
-            const cameraUnavailableByDevice = {};
-
-            for (let i = 0; i < targetDevices.length; i++) {
-                const device = targetDevices[i];
+            const requests = [];
+            for (const device of targetDevices) {
                 let deviceStart = windowStart, deviceEnd = windowEnd;
                 if (hasCsv) {
                     const deviceRanges = dateRanges.filter(range => range.plates && range.plates.has(device._matchedCsvPlate));
@@ -1556,33 +1687,30 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     deviceEnd = Math.min(windowEnd, Math.max(...deviceRanges.map(range => range.max.getTime())));
                     if (deviceStart > deviceEnd) continue;
                 }
-                const deviceFrom = new Date(deviceStart).toISOString();
-                const deviceTo = new Date(deviceEnd).toISOString();
-                UI.updateLoading(`Descargando viajes y cámara ${i + 1}/${targetDevices.length}: ${device.name}`);
-                try {
-                    const trips = await DataManager.getTrips(device.id, deviceFrom, deviceTo);
-                    trips.forEach(trip => { trip._device = device; });
-                    allTrips.push(...trips);
-                    try {
-                        const cameraResult = await PassengerCamera.fetchForDevice(device, deviceFrom, deviceTo);
-                        cameraEventsByDevice[device.id] = cameraResult.events;
-                        if (!cameraResult.available) cameraUnavailableByDevice[device.id] = cameraResult.reason;
-                    } catch (cameraError) {
-                        cameraUnavailableByDevice[device.id] = cameraError.message || 'Error consultando eventos de cámara.';
-                    }
-                    if (ruleId) {
-                        try {
-                            allEvents.push(...await DataManager.getExceptionEvents(ruleId, device.id, deviceFrom, deviceTo));
-                        } catch (stopError) {
-                            console.warn('Error descargando eventos de Parada Rápida', device.id, stopError);
-                        }
-                    }
-                } catch (deviceError) {
-                    console.warn('Error descargando datos del vehículo', device.id, deviceError);
-                    cameraUnavailableByDevice[device.id] = cameraUnavailableByDevice[device.id] || deviceError.message;
-                }
+                requests.push({ device, fromDate: new Date(deviceStart).toISOString(), toDate: new Date(deviceEnd).toISOString() });
             }
-
+            if (!requests.length) throw new Error('No hay vehículos con viajes dentro del período seleccionado.');
+            UI.updateLoading(`Descargando viajes y paradas en lotes para ${requests.length} vehículos...`);
+            const [vehicleData, cameraResult] = await Promise.all([
+                DataManager.getTripsAndExceptionsBatch(requests, ruleId, 50, (done, total) => {
+                    UI.updateLoading(`Consultas agrupadas: ${done}/${total} vehículos...`);
+                }),
+                PassengerCamera.fetchForDevices(requests.map(request => request.device), fromDate, toDate)
+            ]);
+            const allTrips = [];
+            const allEvents = [];
+            requests.forEach(request => {
+                const result = vehicleData[request.device.id];
+                const diagnostic = cameraResult.diagnosticsByDevice[request.device.id];
+                if (result && result.error) {
+                    if (diagnostic) diagnostic.tripQueryError = result.error;
+                    console.warn('Error descargando viajes/paradas de', request.device.name, result.error);
+                    return;
+                }
+                (result && result.trips || []).forEach(trip => { trip._device = request.device; });
+                allTrips.push(...(result && result.trips || []));
+                allEvents.push(...(result && result.exceptions || []));
+            });
             const tripsInWindow = allTrips.filter(trip => {
                 const start = new Date(trip.start || trip.startTime).getTime();
                 const stop = new Date(trip.stop || trip.stopTime).getTime();
@@ -1593,7 +1721,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             });
             if (ruleId) StopAnalyzer.analyzeTrips(tripsInWindow, allEvents);
             else tripsInWindow.forEach(trip => { trip._stopAnalysis = { quickStops: 0, totalStopTime: 0, maxStop: 0, stopLocations: [] }; });
-            PassengerCamera.analyzeTrips(tripsInWindow, cameraEventsByDevice, allEvents, cameraUnavailableByDevice, cameraTolerance);
+            PassengerCamera.analyzeTrips(tripsInWindow, cameraResult, allEvents, cameraTolerance);
             UI.updateLoading(hasCsv ? 'Comparando ocupación con el CSV...' : 'Preparando resumen de ocupación...');
 
             const toleranceMs = tolerance * 60000;
@@ -1617,9 +1745,9 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 row.audit = RiskEngine.evaluateTrip(row);
                 return row;
             });
-            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate });
+            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate, elapsedSeconds: ((performance.now() - auditStartedAt) / 1000).toFixed(1) });
             UI._cachedData = { enriched, csvData: periodData, hasCsv, tolerance, targetDevices };
-            UI.renderResults(enriched, periodData, tolerance, 0, targetDevices, hasCsv);
+            UI.renderResults(enriched, periodData, tolerance, 0, targetDevices, hasCsv, cameraResult);
         } catch (error) {
             console.error(error);
             UI.showError('Error durante el análisis: ' + error.message);

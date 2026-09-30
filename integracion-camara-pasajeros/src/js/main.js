@@ -159,7 +159,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             document.getElementById('dateFrom').value = toDateInputValue(stats.minDate);
             document.getElementById('dateTo').value = toDateInputValue(stats.maxDate);
             document.getElementById('csvToleranceGroup').style.display = 'flex';
-            updateRunState();        } catch (err) {
+            updateRunState();
+        } catch (err) {
             alert("Error al procesar archivos: " + err.message);
         }
     }
@@ -206,13 +207,8 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             const dateRanges = hasCsv && csvData.dateRanges && csvData.dateRanges.length
                 ? csvData.dateRanges
                 : [{ min: new Date(windowStart), max: new Date(windowEnd), plates: new Set(Array.from(csvPlates)) }];
-            const allTrips = [];
-            const allEvents = [];
-            const cameraEventsByDevice = {};
-            const cameraUnavailableByDevice = {};
-
-            for (let i = 0; i < targetDevices.length; i++) {
-                const device = targetDevices[i];
+            const requests = [];
+            for (const device of targetDevices) {
                 let deviceStart = windowStart, deviceEnd = windowEnd;
                 if (hasCsv) {
                     const deviceRanges = dateRanges.filter(range => range.plates && range.plates.has(device._matchedCsvPlate));
@@ -221,33 +217,30 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                     deviceEnd = Math.min(windowEnd, Math.max(...deviceRanges.map(range => range.max.getTime())));
                     if (deviceStart > deviceEnd) continue;
                 }
-                const deviceFrom = new Date(deviceStart).toISOString();
-                const deviceTo = new Date(deviceEnd).toISOString();
-                UI.updateLoading(`Descargando viajes y cámara ${i + 1}/${targetDevices.length}: ${device.name}`);
-                try {
-                    const trips = await DataManager.getTrips(device.id, deviceFrom, deviceTo);
-                    trips.forEach(trip => { trip._device = device; });
-                    allTrips.push(...trips);
-                    try {
-                        const cameraResult = await PassengerCamera.fetchForDevice(device, deviceFrom, deviceTo);
-                        cameraEventsByDevice[device.id] = cameraResult.events;
-                        if (!cameraResult.available) cameraUnavailableByDevice[device.id] = cameraResult.reason;
-                    } catch (cameraError) {
-                        cameraUnavailableByDevice[device.id] = cameraError.message || 'Error consultando eventos de cámara.';
-                    }
-                    if (ruleId) {
-                        try {
-                            allEvents.push(...await DataManager.getExceptionEvents(ruleId, device.id, deviceFrom, deviceTo));
-                        } catch (stopError) {
-                            console.warn('Error descargando eventos de Parada Rápida', device.id, stopError);
-                        }
-                    }
-                } catch (deviceError) {
-                    console.warn('Error descargando datos del vehículo', device.id, deviceError);
-                    cameraUnavailableByDevice[device.id] = cameraUnavailableByDevice[device.id] || deviceError.message;
-                }
+                requests.push({ device, fromDate: new Date(deviceStart).toISOString(), toDate: new Date(deviceEnd).toISOString() });
             }
-
+            if (!requests.length) throw new Error('No hay vehículos con viajes dentro del período seleccionado.');
+            UI.updateLoading(`Descargando viajes y paradas en lotes para ${requests.length} vehículos...`);
+            const [vehicleData, cameraResult] = await Promise.all([
+                DataManager.getTripsAndExceptionsBatch(requests, ruleId, 50, (done, total) => {
+                    UI.updateLoading(`Consultas agrupadas: ${done}/${total} vehículos...`);
+                }),
+                PassengerCamera.fetchForDevices(requests.map(request => request.device), fromDate, toDate)
+            ]);
+            const allTrips = [];
+            const allEvents = [];
+            requests.forEach(request => {
+                const result = vehicleData[request.device.id];
+                const diagnostic = cameraResult.diagnosticsByDevice[request.device.id];
+                if (result && result.error) {
+                    if (diagnostic) diagnostic.tripQueryError = result.error;
+                    console.warn('Error descargando viajes/paradas de', request.device.name, result.error);
+                    return;
+                }
+                (result && result.trips || []).forEach(trip => { trip._device = request.device; });
+                allTrips.push(...(result && result.trips || []));
+                allEvents.push(...(result && result.exceptions || []));
+            });
             const tripsInWindow = allTrips.filter(trip => {
                 const start = new Date(trip.start || trip.startTime).getTime();
                 const stop = new Date(trip.stop || trip.stopTime).getTime();
@@ -258,7 +251,7 @@ geotab.addin.blunvtcauditoria = function(api, state) {
             });
             if (ruleId) StopAnalyzer.analyzeTrips(tripsInWindow, allEvents);
             else tripsInWindow.forEach(trip => { trip._stopAnalysis = { quickStops: 0, totalStopTime: 0, maxStop: 0, stopLocations: [] }; });
-            PassengerCamera.analyzeTrips(tripsInWindow, cameraEventsByDevice, allEvents, cameraUnavailableByDevice, cameraTolerance);
+            PassengerCamera.analyzeTrips(tripsInWindow, cameraResult, allEvents, cameraTolerance);
             UI.updateLoading(hasCsv ? 'Comparando ocupación con el CSV...' : 'Preparando resumen de ocupación...');
 
             const toleranceMs = tolerance * 60000;
@@ -282,9 +275,9 @@ geotab.addin.blunvtcauditoria = function(api, state) {
                 row.audit = RiskEngine.evaluateTrip(row);
                 return row;
             });
-            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate });
+            const periodData = Object.assign({}, csvData, { minDate: fromDate, maxDate: toDate, elapsedSeconds: ((performance.now() - auditStartedAt) / 1000).toFixed(1) });
             UI._cachedData = { enriched, csvData: periodData, hasCsv, tolerance, targetDevices };
-            UI.renderResults(enriched, periodData, tolerance, 0, targetDevices, hasCsv);
+            UI.renderResults(enriched, periodData, tolerance, 0, targetDevices, hasCsv, cameraResult);
         } catch (error) {
             console.error(error);
             UI.showError('Error durante el análisis: ' + error.message);

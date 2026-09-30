@@ -51,37 +51,47 @@ const UI = (function() {
         _cachedData: null,
 
         // ── RENDER PRINCIPAL ─────────────────────────────────────
-        renderResults: function(trips, periodData, tolerance, cameraTolerance, targetDevices, hasCsv) {
+        renderResults: function(trips, periodData, tolerance, cameraTolerance, targetDevices, hasCsv, cameraResult) {
             currentTrips = trips;
             if (targetDevices) _targetDevices = targetDevices;
             const filter = document.getElementById('filterVehicle');
             const data = filter && filter.value !== 'all' ? trips.filter(t => t.deviceId === filter.value) : trips;
+            const diagnosticsMap = cameraResult && cameraResult.diagnosticsByDevice || {};
+            const visibleDiagnostics = Object.values(diagnosticsMap).filter(d => !filter || filter.value === 'all' || d.deviceId === filter.value);
             const occupied = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger);
             const noEvent = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger);
-            const unavailable = data.filter(t => !t._passengerAnalysis || !t._passengerAnalysis.available);
             const registered = occupied.filter(t => t.matched);
             const frauds = hasCsv ? occupied.filter(t => !t.matched) : [];
             const eventMap = new Map();
-            data.forEach(t => (t._passengerAnalysis && t._passengerAnalysis.receivedEvents || []).forEach(e => {
-                const key = `${t.deviceId}:${e.id || e.eventStart}`;
+            Object.entries(cameraResult && cameraResult.eventsByDevice || {}).forEach(([deviceId, events]) => events.forEach(e => {
+                const key = `${deviceId}:${e.id || e.eventStart}`;
                 if (!eventMap.has(key)) eventMap.set(key, e);
             }));
             const byVehicle = new Map();
+            visibleDiagnostics.forEach(d => byVehicle.set(d.deviceId, { name: d.deviceName, trips: [], deviceId: d.deviceId, diagnostic: d }));
             data.forEach(t => {
                 const key = t.deviceId;
-                if (!byVehicle.has(key)) byVehicle.set(key, { name: t.plateOrig || t.deviceName, trips: [], deviceId: key });
+                if (!byVehicle.has(key)) byVehicle.set(key, { name: t.plateOrig || t.deviceName, trips: [], deviceId: key, diagnostic: diagnosticsMap[key] });
                 byVehicle.get(key).trips.push(t);
             });
             const vehicles = Array.from(byVehicle.values()).sort((a,b) => a.name.localeCompare(b.name, 'es'));
-            const period = `${fmtDateShort(new Date(periodData.minDate))} – ${fmtDateShort(new Date(periodData.maxDate))}`;
+            const okCameraCount = visibleDiagnostics.filter(d => d.status === 'ok').length;
+            const issueDiagnostics = visibleDiagnostics.filter(d => d.status !== 'ok');
+            const statusLabels = {
+                ok: 'Consulta OK', missing_device_serial: 'Sin serial GO',
+                camera_catalog_error: 'Error catálogo Camera', camera_not_linked: 'Camera no asociada',
+                camera_serial_missing: 'Sin serial cámara', camera_event_error: 'Error CameraEvent',
+                camera_not_queried: 'No consultada', pending: 'Pendiente', pending_events: 'Pendiente'
+            };
+            const escapeHtml = value => String(value || '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));            const period = `${fmtDateShort(new Date(periodData.minDate))} – ${fmtDateShort(new Date(periodData.maxDate))}`;
             const html = [];
             html.push(`
                 <div class="info-bar">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Período: ${period} · ${data.length} viajes Geotab · ${hasCsv ? `CSV cargado, tolerancia ±${tolerance} min` : 'modo resumen de cámara'} · Cámara ±${document.getElementById('cameraTolerance').value} min
+                    Período: ${period} · ${data.length} viajes Geotab · ${visibleDiagnostics.length} vehículos · ${okCameraCount} cámaras consultadas OK · ${issueDiagnostics.length} incidencias · ${hasCsv ? `CSV ±${tolerance} min` : 'sin CSV'} · Cámara ±${document.getElementById('cameraTolerance').value} min · ${periodData.elapsedSeconds || 0}s
                 </div>
-                ${unavailable.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">Sin cobertura de cámara en ${unavailable.length} viaje(s); no se clasifican como “sin ocupación”.</div>` : ''}
-                ${eventMap.size === 0 && data.length > unavailable.length ? `<div class="info-bar">La cámara se consultó correctamente, pero no se recibieron eventos Passenger.Disallowed. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
+                ${issueDiagnostics.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">${issueDiagnostics.length} vehículo(s) con incidencias de cámara. La columna Estado cámara muestra el motivo exacto.</div>` : ''}
+                ${eventMap.size === 0 && okCameraCount > 0 ? `<div class="info-bar">La cámara se consultó correctamente, pero no se recibieron eventos Passenger.Disallowed. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
                 ${!hasCsv ? `<div class="info-bar">“Sin evento detectado” solo cuenta viajes con cámara disponible; no confirma por sí solo que viajaran sin pasajeros.</div>` : ''}
                 <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
                     ${hasCsv ? `
@@ -100,13 +110,19 @@ const UI = (function() {
                 <div class="table-card">
                     <div class="table-toolbar"><span class="table-title">Resumen por vehículo</span></div>
                     ${vehicles.length ? `<div class="table-wrap"><table><thead><tr>
-                        <th>Vehículo</th><th>Viajes Geotab</th><th>Con ocupación</th><th>Sin evento detectado</th><th>Sin cobertura cámara</th>${hasCsv ? '<th>Ocupación sin CSV</th>' : ''}
+                        <th>Vehículo</th><th>Viajes Geotab</th><th>Con ocupación</th><th>Sin evento detectado</th><th>Eventos recibidos</th><th>Seriales</th><th>Estado cámara</th>${hasCsv ? '<th>Ocupación sin CSV</th>' : ''}
                     </tr></thead><tbody>${vehicles.map(v => {
                         const withOccupancy = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger).length;
                         const withoutEvent = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger).length;
-                        const noCoverage = v.trips.length - withOccupancy - withoutEvent;
+                        const diagnostic = v.diagnostic || {};
+                        const received = diagnostic.eventsReceived || 0;
+                        const status = statusLabels[diagnostic.status] || diagnostic.status || 'Sin diagnóstico';
+                        const reason = diagnostic.reason || diagnostic.tripQueryError || '';
+                        const serials = 'GO: ' + (diagnostic.deviceSerialNumber || 'no disponible') + (diagnostic.cameraSerialNumber ? ' · Cámara: ' + diagnostic.cameraSerialNumber : '');
+                        const statusClass = diagnostic.status === 'ok' ? 'pill-ok' : 'pill-warn';
+                        const statusCell = `<span class="pill ${statusClass}" title="${escapeHtml(reason)}">${escapeHtml(status)}</span>${reason ? `<div style="font-size:10px;color:var(--ink-mid);max-width:260px;white-space:normal;">${escapeHtml(reason)}</div>` : ''}`;
                         const suspicious = hasCsv ? v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched).length : 0;
-                        return `<tr><td><strong>${v.name}</strong></td><td>${v.trips.length}</td><td>${withOccupancy}</td><td>${withoutEvent}</td><td>${noCoverage}</td>${hasCsv ? `<td>${suspicious}</td>` : ''}</tr>`;
+                        return `<tr><td><strong>${escapeHtml(v.name)}</strong></td><td>${v.trips.length}</td><td>${withOccupancy}</td><td>${withoutEvent}</td><td>${received}</td><td style="font-size:10px;">${escapeHtml(serials)}</td><td>${statusCell}</td>${hasCsv ? `<td>${suspicious}</td>` : ''}</tr>`;
                     }).join('')}</tbody></table></div>` : `<div class="state"><p>No se encontraron viajes Geotab en este período para los vehículos seleccionados.</p></div>`}
                     <div class="table-footer"><span>${vehicles.length} vehículos · ${data.length} viajes analizados</span></div>
                 </div>

@@ -159,6 +159,51 @@ const DataManager = (function() {
             return cache.rules;
         },
 
+        getTripsAndExceptionsBatch: async function(requests, ruleId, batchSize, onProgress) {
+            const output = {};
+            const size = Math.max(1, Math.min(batchSize || 50, 50));
+            for (let offset = 0; offset < requests.length; offset += size) {
+                const batch = requests.slice(offset, offset + size);
+                const calls = [];
+                batch.forEach(request => {
+                    calls.push(['Get', { typeName: 'Trip', search: {
+                        fromDate: request.fromDate, toDate: request.toDate, deviceSearch: { id: request.device.id }
+                    }, resultsLimit: 50000 }]);
+                    if (ruleId) calls.push(['Get', { typeName: 'ExceptionEvent', search: {
+                        ruleSearch: { id: ruleId }, deviceSearch: { id: request.device.id },
+                        fromDate: request.fromDate, toDate: request.toDate
+                    }, resultsLimit: 50000 }]);
+                });
+                if (onProgress) onProgress(Math.min(offset + batch.length, requests.length), requests.length);
+                try {
+                    const results = await new Promise((resolve, reject) => {
+                        if (!api || typeof api.multiCall !== 'function') return reject(new Error('Geotab API multiCall no disponible.'));
+                        api.multiCall(calls, resolve, reject);
+                    });
+                    batch.forEach((request, index) => {
+                        const stride = ruleId ? 2 : 1;
+                        output[request.device.id] = {
+                            trips: Array.isArray(results[index * stride]) ? results[index * stride] : [],
+                            exceptions: ruleId && Array.isArray(results[index * stride + 1]) ? results[index * stride + 1] : [],
+                            error: null
+                        };
+                    });
+                } catch (batchError) {
+                    // If a MultiCall is rejected, fall back per device so diagnostics remain specific.
+                    const fallback = await Promise.all(batch.map(async request => {
+                        try {
+                            const trips = await this.getTrips(request.device.id, request.fromDate, request.toDate);
+                            const exceptions = ruleId ? await this.getExceptionEvents(ruleId, request.device.id, request.fromDate, request.toDate) : [];
+                            return { id: request.device.id, trips, exceptions, error: null };
+                        } catch (error) {
+                            return { id: request.device.id, trips: [], exceptions: [], error: error.message || batchError.message };
+                        }
+                    }));
+                    fallback.forEach(result => { output[result.id] = result; });
+                }
+            }
+            return output;
+        },
         getTrips: async function(deviceId, fromDate, toDate) {
             return await callApi('Get', {
                 typeName: 'Trip',
