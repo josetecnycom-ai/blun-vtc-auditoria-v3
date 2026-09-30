@@ -1,9 +1,12 @@
-# Auditoría VTC: ocupación de cámara
+# Auditoría VTC: resumen de ocupación de cámara
 
-Add-in autocontenido que conserva intactos los archivos originales del repositorio.
+Add-in autocontenido; el código original del repositorio permanece intacto.
 
-El análisis se centra en una sola sospecha: un evento `Passenger.Disallowed` de la cámara durante un tramo de viaje Geotab, sin una coincidencia temporal para la matrícula en el CSV de la APP. La regla **Parada Rápida** delimita segmentos para reducir cruces entre tramos; no suma riesgo ni crea sospechas por sí sola. El mapa de calor incluye exclusivamente esos casos.
+## Modo de uso
 
-La pantalla separa eventos de ocupación recibidos, viajes con ocupación que sí coinciden con el CSV y ocupación sin registro. Si la consulta se realizó correctamente y el período es anterior a la activación de `Passenger.Disallowed`, cero eventos es un resultado esperado.
+- **Sin CSV:** selecciona fechas y vehículo(s) y pulsa «Analizar período». El resumen muestra viajes Geotab, viajes con eventos `Passenger.Disallowed`, viajes sin evento detectado y viajes sin cobertura de cámara.
+- **Con CSV:** carga el archivo opcional. Sus fechas se proponen automáticamente y el add-in cruza ocupación con viajes registrados. La lista y el mapa de calor muestran solo viajes ocupados sin coincidencia temporal en el CSV.
 
-Compila con `node build.js` desde esta carpeta. `AddIn.json` publica este add-in con clave independiente.
+La regla **Parada Rápida** separa segmentos para asignar eventos de cámara; no suma riesgo por sí misma. “Sin evento detectado” no confirma que no hubiera pasajeros, y solo se cuenta cuando la consulta de cámara estuvo disponible.
+
+Compila desde esta carpeta con `node build.js`. El manifiesto `AddIn.json` registra una clave independiente y publica en `integracion-camara-pasajeros/dist/`.

@@ -3,7 +3,7 @@ const RiskEngine = (function() {
     return {
         evaluateTrip: function(trip) {
             const passenger = trip._passengerAnalysis || { hasPassenger: false, events: [] };
-            const unregisteredOccupancy = passenger.hasPassenger && !trip.matched;
+            const unregisteredOccupancy = trip.hasCsv && passenger.hasPassenger && !trip.matched;
             const reasons = [];
             if (unregisteredOccupancy) {
                 reasons.push(`Passenger.Disallowed: ${passenger.events.length} evento(s) y ningún viaje CSV coincidente.`);

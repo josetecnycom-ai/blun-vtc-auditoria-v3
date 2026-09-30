@@ -51,61 +51,89 @@ const UI = (function() {
         _cachedData: null,
 
         // ── RENDER PRINCIPAL ─────────────────────────────────────
-        renderResults: function(trips, csvData, tolerance, minDist, targetDevices) {
+        renderResults: function(trips, periodData, tolerance, cameraTolerance, targetDevices, hasCsv) {
             currentTrips = trips;
             if (targetDevices) _targetDevices = targetDevices;
             const filter = document.getElementById('filterVehicle');
-            const data = filter && filter.value !== 'all' ? trips.filter(t => t.plate === filter.value) : trips;
-            const frauds = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched);
-            const registered = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && t.matched);
+            const data = filter && filter.value !== 'all' ? trips.filter(t => t.deviceId === filter.value) : trips;
+            const occupied = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger);
+            const noEvent = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger);
+            const unavailable = data.filter(t => !t._passengerAnalysis || !t._passengerAnalysis.available);
+            const registered = occupied.filter(t => t.matched);
+            const frauds = hasCsv ? occupied.filter(t => !t.matched) : [];
             const eventMap = new Map();
             data.forEach(t => (t._passengerAnalysis && t._passengerAnalysis.receivedEvents || []).forEach(e => {
                 const key = `${t.deviceId}:${e.id || e.eventStart}`;
                 if (!eventMap.has(key)) eventMap.set(key, e);
             }));
-            const availableCount = data.filter(t => t._passengerAnalysis && t._passengerAnalysis.available).length;
-            const unavailableReasons = Array.from(new Set(data.map(t => t._passengerAnalysis && t._passengerAnalysis.unavailableReason).filter(Boolean)));
-            const period = `${fmtDateShort(new Date(csvData.minDate))} – ${fmtDateShort(new Date(csvData.maxDate))}`;
+            const byVehicle = new Map();
+            data.forEach(t => {
+                const key = t.deviceId;
+                if (!byVehicle.has(key)) byVehicle.set(key, { name: t.plateOrig || t.deviceName, trips: [], deviceId: key });
+                byVehicle.get(key).trips.push(t);
+            });
+            const vehicles = Array.from(byVehicle.values()).sort((a,b) => a.name.localeCompare(b.name, 'es'));
+            const period = `${fmtDateShort(new Date(periodData.minDate))} – ${fmtDateShort(new Date(periodData.maxDate))}`;
             const html = [];
             html.push(`
                 <div class="info-bar">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Período: ${period} · ${data.length} viajes revisados · Tolerancia CSV ±${tolerance} min · Cámara ±${document.getElementById('cameraTolerance').value} min
+                    Período: ${period} · ${data.length} viajes Geotab · ${hasCsv ? `CSV cargado, tolerancia ±${tolerance} min` : 'modo resumen de cámara'} · Cámara ±${document.getElementById('cameraTolerance').value} min
                 </div>
-                ${unavailableReasons.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">Cámara no disponible en algunos vehículos: ${unavailableReasons.join(' · ')}</div>` : ''}
-                ${eventMap.size === 0 && availableCount > 0 ? `<div class="info-bar">La consulta de cámara se completó, pero no se recibieron eventos Passenger.Disallowed en este período. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
+                ${unavailable.length ? `<div class="info-bar" style="background:var(--warn-dim);color:var(--warn);border-color:var(--warn);">Sin cobertura de cámara en ${unavailable.length} viaje(s); no se clasifican como “sin ocupación”.</div>` : ''}
+                ${eventMap.size === 0 && data.length > unavailable.length ? `<div class="info-bar">La cámara se consultó correctamente, pero no se recibieron eventos Passenger.Disallowed. Si el período es anterior a la activación de la regla, es normal.</div>` : ''}
+                ${!hasCsv ? `<div class="info-bar">“Sin evento detectado” solo cuenta viajes con cámara disponible; no confirma por sí solo que viajaran sin pasajeros.</div>` : ''}
                 <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
-                    <div class="metric m-accent"><div class="metric-label">Eventos de ocupación</div><div class="metric-value">${eventMap.size}</div></div>
-                    <div class="metric m-ok"><div class="metric-label">Ocupación con viaje CSV</div><div class="metric-value">${registered.length}</div></div>
-                    <div class="metric m-danger"><div class="metric-label">Ocupación sin registro</div><div class="metric-value">${frauds.length}</div><div class="metric-sub">Sospechas claras para revisar</div></div>
+                    ${hasCsv ? `
+                        <div class="metric m-accent"><div class="metric-label">Eventos de ocupación recibidos</div><div class="metric-value">${eventMap.size}</div></div>
+                        <div class="metric m-ok"><div class="metric-label">Viajes ocupados con CSV</div><div class="metric-value">${registered.length}</div></div>
+                        <div class="metric m-danger"><div class="metric-label">Ocupación sin registro</div><div class="metric-value">${frauds.length}</div></div>
+                    ` : `
+                        <div class="metric m-accent"><div class="metric-label">Viajes analizados</div><div class="metric-value">${data.length}</div></div>
+                        <div class="metric m-danger"><div class="metric-label">Viajes con ocupación</div><div class="metric-value">${occupied.length}</div></div>
+                        <div class="metric m-ok"><div class="metric-label">Sin evento detectado</div><div class="metric-value">${noEvent.length}</div><div class="metric-sub">con cámara disponible</div></div>
+                    `}
                 </div>
             `);
-            html.push(UI.generateHeatmap(frauds));
+            html.push(UI.generateHeatmap(hasCsv ? frauds : occupied, hasCsv ? 'Ocupación detectada sin coincidencia CSV' : 'Viajes con ocupación detectada'));
             html.push(`
                 <div class="table-card">
-                    <div class="table-toolbar"><span class="table-title">Viajes con ocupación sin coincidencia en CSV</span></div>
-                    ${frauds.length ? `<div class="table-wrap"><table><thead><tr><th>Vehículo</th><th>Fecha</th><th>Inicio Geotab</th><th>Fin Geotab</th><th>Eventos</th><th>CSV</th><th></th></tr></thead><tbody>
-                        ${frauds.slice().sort((a,b) => b.gStart - a.gStart).map(t => `<tr>
-                            <td><strong>${t.plateOrig}</strong></td><td>${fmtDate(t.gStart)}</td><td>${fmtTime(t.gStart)}</td><td>${fmtTime(t.gStop)}</td>
-                            <td>${t._passengerAnalysis.events.length}</td><td><span class="pill pill-danger">Sin coincidencia</span></td>
-                            <td><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver viaje</a></td>
-                        </tr>`).join('')}
-                    </tbody></table></div>` : `<div class="state"><p>No hay viajes con ocupación detectada sin coincidencia en el CSV para los filtros seleccionados.</p></div>`}
-                    <div class="table-footer"><span>${frauds.length} sospechas claras · ${data.length} viajes revisados</span></div>
+                    <div class="table-toolbar"><span class="table-title">Resumen por vehículo</span></div>
+                    ${vehicles.length ? `<div class="table-wrap"><table><thead><tr>
+                        <th>Vehículo</th><th>Viajes Geotab</th><th>Con ocupación</th><th>Sin evento detectado</th><th>Sin cobertura cámara</th>${hasCsv ? '<th>Ocupación sin CSV</th>' : ''}
+                    </tr></thead><tbody>${vehicles.map(v => {
+                        const withOccupancy = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger).length;
+                        const withoutEvent = v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.available && !t._passengerAnalysis.hasPassenger).length;
+                        const noCoverage = v.trips.length - withOccupancy - withoutEvent;
+                        const suspicious = hasCsv ? v.trips.filter(t => t._passengerAnalysis && t._passengerAnalysis.hasPassenger && !t.matched).length : 0;
+                        return `<tr><td><strong>${v.name}</strong></td><td>${v.trips.length}</td><td>${withOccupancy}</td><td>${withoutEvent}</td><td>${noCoverage}</td>${hasCsv ? `<td>${suspicious}</td>` : ''}</tr>`;
+                    }).join('')}</tbody></table></div>` : `<div class="state"><p>No se encontraron viajes Geotab en este período para los vehículos seleccionados.</p></div>`}
+                    <div class="table-footer"><span>${vehicles.length} vehículos · ${data.length} viajes analizados</span></div>
+                </div>
+            `);
+            if (hasCsv) html.push(`
+                <div class="table-card" style="margin-top:16px;">
+                    <div class="table-toolbar"><span class="table-title">Ocupación detectada sin coincidencia en CSV</span></div>
+                    ${frauds.length ? `<div class="table-wrap"><table><thead><tr><th>Vehículo</th><th>Fecha</th><th>Inicio</th><th>Fin</th><th>Eventos</th><th></th></tr></thead><tbody>
+                        ${frauds.slice().sort((a,b) => b.gStart - a.gStart).map(t => `<tr><td><strong>${t.plateOrig}</strong></td><td>${fmtDate(t.gStart)}</td><td>${fmtTime(t.gStart)}</td><td>${fmtTime(t.gStop)}</td><td>${t._passengerAnalysis.events.length}</td><td><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver viaje</a></td></tr>`).join('')}
+                    </tbody></table></div>` : `<div class="state"><p>No se detectaron viajes con ocupación sin coincidencia CSV.</p></div>`}
+                    <div class="table-footer"><span>${frauds.length} casos para revisar</span></div>
                 </div>
             `);
             document.getElementById('resultsArea').innerHTML = html.join('');
-            document.getElementById('btnExport').style.display = 'inline-flex';
+            const btnExport = document.getElementById('btnExport');
+            if (btnExport) btnExport.style.display = hasCsv && frauds.length ? 'inline-flex' : 'none';
             const btnPdf = document.getElementById('btnExportPDF');
             if (btnPdf) btnPdf.style.display = 'inline-flex';
         },
         // ── GENERATE HEATMAP ─────────────────────────────────────
-        generateHeatmap: function(trips) {
+        generateHeatmap: function(trips, title) {
             const map = Array(7).fill(0).map(() => Array(24).fill(0));
             let maxCount = 0;
             
             trips.forEach(t => {
-                const date = t.gStart;
+                const firstEvent = t._passengerAnalysis && t._passengerAnalysis.events && t._passengerAnalysis.events[0];
+                const date = firstEvent ? new Date(firstEvent.eventStart) : t.gStart;
                 let day = date.getDay() - 1;
                 if (day === -1) day = 6;
                 const hour = date.getHours();
@@ -124,7 +152,7 @@ const UI = (function() {
                         const alpha = 0.15 + (intensity * 0.85);
                         bg = `rgba(220, 38, 38, ${alpha})`;
                     }
-                    const tooltip = `${days[d]} ${h.toString().padStart(2,'0')}:00 - ${count} casos de ocupación sin registro`;
+                    const tooltip = `${days[d]} ${h.toString().padStart(2,'0')}:00 - ${count} casos: ${title.toLowerCase()}`;
                     gridHtml += `<div class="hm-cell" style="background:${bg};" title="${tooltip}"></div>`;
                 }
             }
@@ -136,7 +164,7 @@ const UI = (function() {
 
             return `
             <div class="heatmap-wrapper">
-                <div class="heatmap-title">Mapa de calor: ocupación detectada sin coincidencia CSV</div>
+                <div class="heatmap-title">Mapa de calor: ${title}</div>
                 <div class="heatmap-layout">
                     <div class="heatmap-y-labels">
                         ${days.map(d => `<span>${d}</span>`).join('')}
