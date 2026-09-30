@@ -103,16 +103,34 @@ const PassengerCamera = (function() {
             const serials = Array.from(new Set(candidateCameras.map(c => c.cameraSerialNumber)));
             const deviceById = new Set(candidateCameras.map(c => c.deviceId));
             try {
-                const search = { fromDate, toDate, cameraSerialNumbers: serials, eventTypeFilter: [{ eventType: EVENT_TYPE }] };
-                const allEvents = [];
-                const pageSize = 500;
-                for (let page = 0; page <= 20; page++) {
-                    const batch = await rawApiCall('Get', { typeName: 'CameraEvent', search, resultsLimit: pageSize, page });
-                    if (!batch || !batch.length) break;
-                    allEvents.push(...batch);
-                    if (batch.length < pageSize) break;
-                    if (page === 20) throw new Error('Se superó el límite de 10.500 eventos; reduce el período de consulta.');
+                const baseSearch = { cameraSerialNumbers: serials, eventTypeFilter: [{ eventType: EVENT_TYPE }] };
+                const limit = 500;
+                const maxDepth = 12;
+                const uniqueEvents = new Map();
+                async function fetchCompleteRange(fromMs, toMs, depth) {
+                    const search = Object.assign({}, baseSearch, {
+                        fromDate: new Date(fromMs).toISOString(),
+                        toDate: new Date(toMs).toISOString()
+                    });
+                    const batch = await rawApiCall('Get', { typeName: 'CameraEvent', search, resultsLimit: limit });
+                    if (!batch || !batch.length) return;
+                    if (batch.length >= limit) {
+                        if (depth >= maxDepth || toMs - fromMs <= 1000) {
+                            throw new Error('Hay demasiados eventos incluso en un intervalo de un segundo; reduce el período o selecciona menos vehículos.');
+                        }
+                        const middle = Math.floor((fromMs + toMs) / 2);
+                        await fetchCompleteRange(fromMs, middle, depth + 1);
+                        await fetchCompleteRange(middle + 1, toMs, depth + 1);
+                        return;
+                    }
+                    batch.forEach(event => uniqueEvents.set(event.id || [
+                        event.cameraSerialNumber, event.deviceId, event.eventStart, event.eventType
+                    ].join('|'), event));
                 }
+                const fromMs = new Date(fromDate).getTime();
+                const toMs = new Date(toDate).getTime();
+                await fetchCompleteRange(fromMs, toMs, 0);
+                const allEvents = Array.from(uniqueEvents.values());
                 allEvents.forEach(event => {
                     if (event.eventType === EVENT_TYPE && deviceById.has(event.deviceId)) eventsByDevice[event.deviceId].push(event);
                 });
