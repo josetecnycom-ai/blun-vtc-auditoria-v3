@@ -430,14 +430,79 @@ const DataManager = (function() {
         return String(p || '').replace(/[\s\-]/g, '').toUpperCase().trim();
     }
 
-    // ── PARSEAR FECHA DD/MM/YYYY HH:MM ───────────────────────
-    function parseDate(s) {
+    // ── PARSEAR CSV Y FECHAS DE EXPORTACIONES UBER/HISTORIAL ──
+    function parseDate(value) {
+        const s = String(value || '').trim();
         if (!s) return null;
-        const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
-        if (!m) return null;
-        return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+        let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+        m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+        return null;
     }
 
+    function normalizeHeader(value) {
+        return String(value || '').replace(/^\uFEFF/, '').trim().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function detectDelimiter(text) {
+        const headerLine = String(text || '').split(/\r?\n/, 1)[0] || '';
+        const counts = { ';': 0, ',': 0, '\t': 0 };
+        let quoted = false;
+        for (let i = 0; i < headerLine.length; i++) {
+            const ch = headerLine[i];
+            if (ch === '"') {
+                if (quoted && headerLine[i + 1] === '"') i++;
+                else quoted = !quoted;
+            } else if (!quoted && Object.prototype.hasOwnProperty.call(counts, ch)) {
+                counts[ch]++;
+            }
+        }
+        return Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+    }
+
+    function parseDelimitedCsv(text) {
+        const source = String(text || '').replace(/^\uFEFF/, '');
+        const delimiter = detectDelimiter(source);
+        const rows = [];
+        let row = [], field = '', quoted = false;
+        for (let i = 0; i < source.length; i++) {
+            const ch = source[i];
+            if (ch === '"') {
+                if (quoted && source[i + 1] === '"') { field += '"'; i++; }
+                else quoted = !quoted;
+            } else if (!quoted && ch === delimiter) {
+                row.push(field); field = '';
+            } else if (!quoted && (ch === '\n' || ch === '\r')) {
+                if (ch === '\r' && source[i + 1] === '\n') i++;
+                row.push(field); field = '';
+                if (row.some(cell => String(cell).trim() !== '')) rows.push(row);
+                row = [];
+            } else {
+                field += ch;
+            }
+        }
+        row.push(field);
+        if (row.some(cell => String(cell).trim() !== '')) rows.push(row);
+        return rows;
+    }
+
+    function buildHeaderIndex(headers) {
+        const index = {};
+        headers.forEach((header, i) => { index[normalizeHeader(header)] = i; });
+        return index;
+    }
+
+    function cell(cols, index, header) {
+        const i = index[normalizeHeader(header)];
+        return i === undefined ? '' : String(cols[i] || '').trim();
+    }
+
+    function parseDistance(value) {
+        const parsed = parseFloat(String(value || '0').trim().replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
     // ── WRAPPER API ──────────────────────────────────────────
     function callApi(method, params) {
         return new Promise((resolve, reject) => {
@@ -446,31 +511,30 @@ const DataManager = (function() {
         });
     }
 
-    // ── PARSERS ESPECÍFICOS POR APP ──────────────────────────
-    function parseUberCSV(lines, idx) {
+    // ── PARSERS DE MODELOS DE VIAJES ─────────────────────────
+    function parseUberCSV(rows, idx) {
         const trips = [];
-        for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(';');
-            const estado = (cols[idx['Estado del viaje']] || '').trim();
-            if (estado !== 'completed') continue;
-
-            const plate = normPlate(cols[idx['Matrícula']]);
-            const reqStr = (cols[idx['Hora de la solicitud del viaje']] || '').trim();
-            const arrStr = (cols[idx['Hora de llegada del viaje']] || '').trim();
-            if (!plate || !reqStr || !arrStr) continue;
-
+        for (let i = 1; i < rows.length; i++) {
+            const cols = rows[i];
+            const estado = cell(cols, idx, 'Estado del viaje');
+            if (estado.toLowerCase() !== 'completed') continue;
+            const plateRaw = cell(cols, idx, 'Matrícula');
+            const plate = normPlate(plateRaw);
+            const reqTime = parseDate(cell(cols, idx, 'Hora de la solicitud del viaje'));
+            const arrTime = parseDate(cell(cols, idx, 'Hora de llegada del viaje'));
+            if (!plate || !reqTime || !arrTime) continue;
             trips.push({
-                uuid: cols[idx['UUID del viaje']],
-                conductor: (cols[idx['Nombre del conductor']] || '') + ' ' + (cols[idx['Apellido del conductor']] || ''),
+                uuid: cell(cols, idx, 'UUID del viaje'),
+                conductor: (cell(cols, idx, 'Nombre del conductor') + ' ' + cell(cols, idx, 'Apellido del conductor')).trim(),
                 plate: plate,
-                plateRaw: cols[idx['Matrícula']],
-                reqTime: parseDate(reqStr),
-                arrTime: parseDate(arrStr),
-                origin:  cols[idx['Dirección de recogida']] || '',
-                dest:    cols[idx['Dirección de destino']] || '',
-                dist:    parseFloat((cols[idx['Distancia del viaje']] || '0').replace(',','.')),
-                product: cols[idx['Tipo de producto']] || '',
-                payment: cols[idx['Tipo de pago']] || '',
+                plateRaw: plateRaw,
+                reqTime: reqTime,
+                arrTime: arrTime,
+                origin: cell(cols, idx, 'Dirección de recogida'),
+                dest: cell(cols, idx, 'Dirección de destino'),
+                dist: parseDistance(cell(cols, idx, 'Distancia del viaje')),
+                product: cell(cols, idx, 'Tipo de producto'),
+                payment: cell(cols, idx, 'Tipo de pago'),
                 status: estado,
                 appType: 'uber'
             });
@@ -478,54 +542,38 @@ const DataManager = (function() {
         return trips;
     }
 
-    function parseBoltCSV(lines, idx) {
+    function parseHistoryCSV(rows, idx) {
         const trips = [];
-        for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(';');
-            const estado = (cols[idx['Estado']] || '').trim();
-            
-            // Requerimiento: Analizar "Terminado" y "Cancelación del conductor"
-            if (estado !== 'Terminado' && estado !== 'Cancelación del conductor') continue;
-
-            const plate = normPlate(cols[idx['Matrícula']]);
-            const reqStr = (cols[idx['Fecha']] || '').trim(); 
-            const arrStr = (cols[idx['Tarifa finalizada']] || '').trim(); 
-
-            if (!plate || !reqStr) continue;
-
-            let reqTimeParsed = parseDate(reqStr);
-            let arrTimeParsed = parseDate(arrStr);
-            if (!reqTimeParsed) continue;
-            
-            // Si no hay hora de llegada (por cancelación), estimamos una ventana de 30 mins
-            // para que el motor de riesgo pueda buscar viajes de Geotab en esa franja.
-            if (!arrTimeParsed) {
-                arrTimeParsed = new Date(reqTimeParsed.getTime() + 30 * 60000);
-            }
-
-            let ruta = cols[idx['Ruta']] || '';
-            let origin = ruta.split('→')[0] ? ruta.split('→')[0].trim() : '';
-            let dest = ruta.split('→')[1] ? ruta.split('→')[1].trim() : '';
-
+        for (let i = 1; i < rows.length; i++) {
+            const cols = rows[i];
+            const estado = cell(cols, idx, 'Estado');
+            const normalizedStatus = normalizeHeader(estado);
+            if (normalizedStatus !== 'terminado' && normalizedStatus !== 'cancelacion del conductor') continue;
+            const plateRaw = cell(cols, idx, 'Matrícula');
+            const plate = normPlate(plateRaw);
+            const reqTime = parseDate(cell(cols, idx, 'Fecha'));
+            let arrTime = parseDate(cell(cols, idx, 'Tarifa finalizada'));
+            if (!plate || !reqTime) continue;
+            if (!arrTime) arrTime = new Date(reqTime.getTime() + 30 * 60000);
+            const routeParts = cell(cols, idx, 'Ruta').split('→');
             trips.push({
-                uuid: cols[idx['Identificador individual']],
-                conductor: cols[idx['Conductor']] || '',
+                uuid: cell(cols, idx, 'Identificador individual'),
+                conductor: cell(cols, idx, 'Conductor'),
                 plate: plate,
-                plateRaw: cols[idx['Matrícula']],
-                reqTime: reqTimeParsed,
-                arrTime: arrTimeParsed,
-                origin:  origin,
-                dest:    dest,
-                dist:    parseFloat((cols[idx['Distancia|km']] || '0').replace(',','.')),
-                product: cols[idx['Categoría']] || '',
-                payment: cols[idx['Forma de pago']] || '', // "Efectivo" o "En app"
+                plateRaw: plateRaw,
+                reqTime: reqTime,
+                arrTime: arrTime,
+                origin: routeParts[0] ? routeParts[0].trim() : '',
+                dest: routeParts[1] ? routeParts[1].trim() : '',
+                dist: parseDistance(cell(cols, idx, 'Distancia|km')),
+                product: cell(cols, idx, 'Categoría'),
+                payment: cell(cols, idx, 'Forma de pago'),
                 status: estado,
-                appType: 'bolt'
+                appType: 'history'
             });
         }
         return trips;
     }
-
     return {
         init: function(geotabApi) {
             api = geotabApi;
@@ -643,36 +691,39 @@ const DataManager = (function() {
             const dateRanges = [];
             
             filesData.forEach(file => {
-                let text = file.text.replace(/^\uFEFF/, '');
-                const lines = text.split(/\r?\n/).filter(l => l.trim());
-                if (lines.length < 2) {
-                    console.warn(`El archivo ${file.name} está vacío o no es válido.`);
+                const rows = parseDelimitedCsv(file.text);
+                if (rows.length < 2) {
+                    console.warn('El archivo ' + file.name + ' está vacío o no es válido.');
                     return;
                 }
 
-                // Auto-detección por cabeceras
-                const headerLine = lines[0];
-                const header = headerLine.split(';');
-                const idx = {};
-                header.forEach((h, i) => { idx[h.trim()] = i; });
+                // Detectar el modelo por cabeceras; el separador puede ser coma o punto y coma.
+                const idx = buildHeaderIndex(rows[0]);
+                const hasTripActivity = idx['uuid del viaje'] !== undefined &&
+                    idx['estado del viaje'] !== undefined &&
+                    idx['hora de la solicitud del viaje'] !== undefined &&
+                    idx['matricula'] !== undefined;
+                const hasHistoryModel = idx['estado'] !== undefined &&
+                    idx['fecha'] !== undefined &&
+                    idx['tarifa finalizada'] !== undefined &&
+                    idx['matricula'] !== undefined;
 
                 let appType = 'unknown';
-                if (idx['UUID del viaje'] !== undefined || headerLine.includes('UUID del viaje') || headerLine.includes('Estado del viaje')) {
-                    appType = 'uber';
-                } else if (idx['Identificador individual'] !== undefined || headerLine.includes('Identificador individual') || headerLine.includes('Tarifa finalizada')) {
-                    appType = 'bolt';
-                }
-
                 let trips = [];
-                if (appType === 'uber') {
-                    trips = parseUberCSV(lines, idx);
-                } else if (appType === 'bolt') {
-                    trips = parseBoltCSV(lines, idx);
+                if (hasTripActivity) {
+                    appType = 'uber';
+                    trips = parseUberCSV(rows, idx);
+                } else if (hasHistoryModel) {
+                    appType = 'history';
+                    trips = parseHistoryCSV(rows, idx);
                 } else {
-                    console.warn(`No se pudo detectar el formato de ${file.name}. Formato no reconocido.`);
-                    return; // Skip este archivo
+                    console.warn('Formato CSV no reconocido en ' + file.name + '. Cabeceras: ' + rows[0].join(' | '));
+                    return;
                 }
-                
+                if (!trips.length) {
+                    console.warn('El CSV ' + file.name + ' tiene cabeceras compatibles, pero no contiene filas de viaje válidas o completadas.');
+                    return;
+                }
                 if (trips.length > 0) {
                     // Calcular y guardar el rango de fechas específico de este archivo
                     const fileDates = trips.map(t => t.reqTime).filter(Boolean);
@@ -689,6 +740,16 @@ const DataManager = (function() {
                 allTrips = allTrips.concat(trips);
             });
 
+            // Si se cargan dos exportaciones equivalentes, evita contar dos veces el mismo UUID.
+            const uniqueTrips = new Map();
+            allTrips.forEach(trip => {
+                const uuid = String(trip.uuid || '').trim();
+                const key = uuid
+                    ? trip.appType + '|' + uuid
+                    : [trip.appType, trip.plate, trip.reqTime && trip.reqTime.getTime(), trip.arrTime && trip.arrTime.getTime()].join('|');
+                if (!uniqueTrips.has(key)) uniqueTrips.set(key, trip);
+            });
+            allTrips = Array.from(uniqueTrips.values());
             if (allTrips.length === 0) throw new Error("No se encontraron viajes válidos en los archivos cargados.");
 
             const allDates = allTrips.map(t => t.reqTime).filter(Boolean);
